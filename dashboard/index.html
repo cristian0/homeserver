@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Home Server</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container { text-align: center; max-width: 800px; padding: 2rem; }
+    h1 { margin-bottom: 1rem; }
+    h2 { font-size: 1rem; color: #888; margin: 2rem 0 1rem; text-transform: uppercase; letter-spacing: 0.1em; }
+    .services { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+    a {
+      display: block;
+      background: #16213e;
+      padding: 1.5rem 2rem;
+      border-radius: 8px;
+      color: #fff;
+      text-decoration: none;
+      min-width: 140px;
+    }
+    a:hover { background: #0f3460; }
+    .port { font-size: 0.8rem; color: #888; margin-top: 0.3rem; }
+    .infos { font-size: 1rem; margin-top: 3rem; }
+    
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🏠 Home Server</h1>
+    
+    <div class="services">
+      <a href="http://192.168.1.1">
+	Fastgate
+      </a>
+       <a href="http://192.168.1.10:8123">
+        Home Assistant
+        <div class="port">:8123</div>
+      </a>
+      <a href="http://192.168.1.10:8080/admin">
+        Pi-hole
+        <div class="port">:8080</div>
+      </a>
+      <a href="http://192.168.1.10:51821">
+        WireGuard
+        <div class="port">:51821</div>
+      </a>
+    </div>
+    <div class="infos">
+      KOReader Sync:<br>
+      <div class="port">https://192.168.1.10:7200</div>
+    </div>
+  </div>
+</body>
+</html>
