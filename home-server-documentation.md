@@ -22,6 +22,7 @@
 | WireGuard VPN | 51820/UDP | - |
 | DNS (Pi-hole) | 53 | - |
 | KOReader Sync | 7200 | http://192.168.1.10:7200 |
+| Beszel | 8090 | http://192.168.1.10:8090 |
 
 ---
 
@@ -61,7 +62,26 @@ echo "net.ipv4.conf.all.src_valid_mark=1" | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
 ```
 
-**Note:** NAT and forwarding rules for VPN are now automatically configured by WireGuard via the `WG_POST_UP` and `WG_POST_DOWN` environment variables in docker-compose.yml. Manual iptables configuration is no longer required.
+### Configure iptables for VPN (required for internet access via VPN)
+
+**Why this is needed:** The WireGuard container (wg-easy) uses `network_mode: host` so that Pi-hole can see individual VPN client IPs (10.8.0.2, 10.8.0.3, etc.) instead of a single Docker bridge IP. With bridge networking, Docker handles NAT automatically, but with host networking, NAT must be configured.
+
+**Note:** WireGuard now auto-configures these rules via `WG_POST_UP`/`WG_POST_DOWN` environment variables in docker-compose.yml. The manual commands below are only needed for troubleshooting or if the automatic configuration fails.
+
+Manual NAT masquerade and forwarding rules (if needed):
+
+```bash
+sudo iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -j MASQUERADE
+sudo iptables -A FORWARD -s 10.8.0.0/24 -j ACCEPT
+sudo iptables -A FORWARD -d 10.8.0.0/24 -j ACCEPT
+```
+
+Save rules to persist across reboots:
+
+```bash
+sudo apt install iptables-persistent -y
+sudo netfilter-persistent save
+```
 
 ### Configure WiFi Static IP
 
@@ -178,6 +198,8 @@ mkdir -p /srv/docker/wireguard
 mkdir -p /srv/docker/koreader-sync/logs/app
 mkdir -p /srv/docker/koreader-sync/logs/redis
 mkdir -p /srv/docker/koreader-sync/data/redis
+mkdir -p /srv/docker/beszel/data
+mkdir -p /srv/docker/beszel/socket
 sudo chown -R $USER:$USER /srv/docker
 ```
 
@@ -196,6 +218,8 @@ Content:
 ```
 PIHOLE_PASSWORD=your_pihole_password_here
 WG_PASSWORD_HASH=$2a$12$your_bcrypt_hash_here
+BESZEL_KEY=ssh-ed25519_your_public_key_here
+BESZEL_TOKEN=your_token_here
 ```
 
 Secure the file:
@@ -212,152 +236,26 @@ docker run -it --rm ghcr.io/wg-easy/wg-easy wgpw 'YOUR_PASSWORD_HERE'
 
 Copy the output hash to `.env`.
 
+### Beszel Key and Token
+
+The `BESZEL_KEY` and `BESZEL_TOKEN` values are obtained from the Beszel web UI when adding a new system. See Section 17 for setup instructions.
+
 ---
 
 ## 6. Docker Compose Configuration
 
-Create `/srv/docker/docker-compose.yml`:
+The full configuration is in `docker-compose.yml` in the repository.
 
-**Note:** Both `pihole` and `wg-easy` use `network_mode: host` so that Pi-hole can see real client IPs instead of Docker's internal bridge IP. WireGuard now automatically configures NAT via `WG_POST_UP` and `WG_POST_DOWN` environment variables.
-
-```yaml
-services:
-  homeassistant:
-    container_name: homeassistant
-    image: "ghcr.io/home-assistant/home-assistant:stable"
-    volumes:
-      - ./homeassistant:/config
-      - /etc/localtime:/etc/localtime:ro
-      - /run/dbus:/run/dbus:ro
-    restart: unless-stopped
-    privileged: true
-    network_mode: host
-    environment:
-      TZ: Europe/Rome
-
-  pihole:
-    container_name: pihole
-    image: pihole/pihole:latest
-    network_mode: host
-    environment:
-      TZ: Europe/Rome
-      FTLCONF_webserver_api_password: ${PIHOLE_PASSWORD}
-      FTLCONF_dns_listeningMode: all
-      FTLCONF_webserver_port: 8080
-    volumes:
-      - ./pihole/etc-pihole:/etc/pihole
-      - ./pihole/etc-dnsmasq.d:/etc/dnsmasq.d
-    cap_add:
-      - NET_ADMIN
-    restart: unless-stopped
-
-  dashboard:
-    container_name: dashboard
-    image: nginx:alpine
-    ports:
-      - "80:80"
-    volumes:
-      - ./dashboard:/usr/share/nginx/html:ro
-    restart: unless-stopped
-
-  wg-easy:
-    container_name: wg-easy
-    image: ghcr.io/wg-easy/wg-easy
-    network_mode: host
-    environment:
-      WG_HOST: 2.229.233.252
-      PASSWORD_HASH: ${WG_PASSWORD_HASH}
-      WG_DEFAULT_DNS: 192.168.1.10
-      WG_PORT: 51820
-      PORT: 51821
-      WG_POST_UP: iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -j MASQUERADE
-      WG_POST_DOWN: iptables -t nat -D POSTROUTING -s 10.8.0.0/24 -j MASQUERADE
-    volumes:
-      - ./wireguard:/etc/wireguard
-    cap_add:
-      - NET_ADMIN
-      - SYS_MODULE
-    restart: unless-stopped
-
-  koreader-sync:
-    container_name: koreader-sync
-    image: koreader/kosync:latest
-    ports:
-      - "7200:7200"
-    environment:
-      - ENABLE_USER_REGISTRATION=true
-    volumes:
-      - ./koreader-sync/logs/app:/app/koreader-sync-server/logs
-      - ./koreader-sync/logs/redis:/var/log/redis
-      - ./koreader-sync/data/redis:/var/lib/redis
-    restart: unless-stopped
-```
+**Key design decisions:**
+- Both `pihole` and `wg-easy` use `network_mode: host` so that Pi-hole can see real client IPs instead of Docker's internal bridge IP
+- WireGuard auto-configures NAT rules via `WG_POST_UP`/`WG_POST_DOWN`
+- The `BESZEL_KEY` and `BESZEL_TOKEN` must be configured in `.env` after initial Beszel setup (see Section 14)
 
 ---
 
-## 7. Dashboard HTML
+## 7. Dashboard
 
-Create `/srv/docker/dashboard/index.html`:
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Home Server</title>
-  <style>
-    body {
-      font-family: system-ui, sans-serif;
-      background: #1a1a2e;
-      color: #eee;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      margin: 0;
-    }
-    .container { text-align: center; }
-    h1 { margin-bottom: 2rem; }
-    .services { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
-    a {
-      display: block;
-      background: #16213e;
-      padding: 1.5rem 2rem;
-      border-radius: 8px;
-      color: #fff;
-      text-decoration: none;
-      min-width: 150px;
-    }
-    a:hover { background: #0f3460; }
-    .port { font-size: 0.8rem; color: #888; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>🏠 Home Server</h1>
-    <div class="services">
-      <a href="http://192.168.1.10:8123">
-        Home Assistant
-        <div class="port">:8123</div>
-      </a>
-      <a href="http://192.168.1.10:8080/admin">
-        Pi-hole
-        <div class="port">:8080</div>
-      </a>
-      <a href="http://192.168.1.10:51821">
-        WireGuard
-        <div class="port">:51821</div>
-      </a>
-      <a href="http://192.168.1.10:7200">
-        KOReader Sync
-        <div class="port">:7200</div>
-      </a>
-    </div>
-  </div>
-</body>
-</html>
-```
+The dashboard HTML is in `dashboard/index.html` in the repository. It is served by the nginx container on port 80.
 
 ---
 
@@ -487,66 +385,127 @@ docker compose restart pihole
 
 Tools → Network → Find IP → Add name
 
+
 ---
 
-## 13. KOReader Sync Server Setup
+## 13. KOReader Sync Client Configuration
 
-KOReader Sync Server synchronizes reading progress across devices running KOReader.
+KOReader Sync server runs on port 7200 and syncs reading progress across devices.
 
-### Service Details
+- **URL**: `http://192.168.1.10:7200`
+- **Access**: Local network or VPN only
 
-- **Access**: Local network only (http://192.168.1.10:7200)
-- **Registration**: Open (enabled via `ENABLE_USER_REGISTRATION=true`)
-- **Function**: Syncs reading positions between devices
+### Device Setup
 
-### Configure KOReader on Kindle
+On any device running KOReader (Kindle, Mac, etc.):
 
-1. On your jailbroken Kindle with KOReader installed:
-2. Open any book in KOReader
-3. Tap the top of the screen → Tools (⚙️) → Progress sync
-4. Enable "Progress sync"
-5. Configure server settings:
-   - **Server**: `http://192.168.1.10:7200`
-   - **Username**: (create your username)
-   - **Password**: (create your password)
-6. Tap "Register" (first time only)
-7. Tap "Login"
+1. Open any book → tap top of screen → **Tools** → **Progress sync**
+2. Set **Server** to `http://192.168.1.10:7200`
+3. Enter a **Username** and **Password**
+4. Tap **Register** (first time only), then **Login**
 
-### Configure KOReader on Mac
+Use the same credentials on all devices to keep reading positions in sync.
 
-1. Install KOReader on Mac (if not already installed)
-2. Open KOReader
-3. Access Settings → Network → Progress sync
-4. Enable "Progress sync"
-5. Configure server settings:
-   - **Server**: `http://192.168.1.10:7200`
-   - **Username**: (same as Kindle)
-   - **Password**: (same as Kindle)
-6. Tap "Login"
+---
 
-### Sync Behavior
+## 14. Beszel (Server Monitoring)
 
-- Reading positions sync automatically when online and connected to local network
-- Sync occurs when you close a book or at regular intervals
-- Last read position is synced across all devices using the same account
+Beszel is a lightweight server monitoring tool with Docker container stats, historical data, and alerting.
+
+### Architecture
+
+- **Hub**: Web dashboard (port 8090)
+- **Agent**: Collects metrics from the host system
+- **Communication**: Unix socket (hub and agent on same machine)
+
+### Directory Setup
+
+```bash
+mkdir -p /srv/docker/beszel/data
+mkdir -p /srv/docker/beszel/socket
+```
+
+### Docker Compose Configuration
+
+See Section 6 for the complete docker-compose.yml including Beszel services.
+
+### Initial Setup
+
+1. Start the hub first:
+
+```bash
+docker compose up -d beszel
+```
+
+2. Access web UI: http://192.168.1.10:8090
+
+3. Create admin account on first visit
+
+4. Click **Add System** → select "Same system (Docker socket)"
+
+5. Copy the **KEY** and **TOKEN** values from the dialog
+
+6. Add the values to `/srv/docker/.env`:
+
+```bash
+nano /srv/docker/.env
+```
+
+Add:
+
+```
+BESZEL_KEY=ssh-ed25519_your_key_here
+BESZEL_TOKEN=your_token_here
+```
+
+7. Start the agent:
+
+```bash
+docker compose up -d beszel-agent
+```
+
+8. In the web UI, click **Add System** to complete the connection
+
+### Features
+
+- **System Metrics**: CPU, memory, disk usage, network I/O, temperature
+- **Docker Stats**: Per-container CPU, memory, and network usage
+- **Historical Data**: View metrics over time
+- **Alerts**: Configurable thresholds for CPU, memory, disk, bandwidth, temperature
 
 ### Troubleshooting
 
-Check if service is running:
+#### Agent not connecting
+
+Check agent logs:
 
 ```bash
-docker compose logs koreader-sync
+docker logs beszel-agent --tail 30
 ```
 
-Test server access:
+Verify socket directory permissions:
 
 ```bash
-curl http://192.168.1.10:7200/healthcheck
+ls -la /srv/docker/beszel/socket/
+```
+
+#### No Docker stats showing
+
+Ensure Docker socket is mounted:
+
+```bash
+docker inspect beszel-agent | grep -A5 Mounts
+```
+
+#### Restart Beszel services
+
+```bash
+docker compose restart beszel beszel-agent
 ```
 
 ---
 
-## 14. Accessing Services
+## 15. Accessing Services
 
 ### From Local Network
 
@@ -557,6 +516,7 @@ curl http://192.168.1.10:7200/healthcheck
 | Pi-hole | http://192.168.1.10:8080/admin |
 | WireGuard Admin | http://192.168.1.10:51821 |
 | KOReader Sync | http://192.168.1.10:7200 |
+| Beszel | http://192.168.1.10:8090 |
 
 ### From Outside (VPN Required)
 
@@ -567,7 +527,7 @@ curl http://192.168.1.10:7200/healthcheck
 
 ---
 
-## 15. Maintenance Commands
+## 16. Maintenance Commands
 
 ### View running containers
 
@@ -605,17 +565,27 @@ All services will restart automatically (restart: unless-stopped).
 
 ---
 
-## 16. Troubleshooting
+## 17. Troubleshooting
 
 ### VPN connected but no internet
 
-NAT/forwarding is configured automatically via WireGuard's `WG_POST_UP` environment variable. If issues persist, verify IP forwarding is enabled:
+WireGuard auto-configures NAT rules via `WG_POST_UP`/`WG_POST_DOWN`. If internet still doesn't work, check the rules manually.
+
+Check iptables rules:
 
 ```bash
-sudo sysctl net.ipv4.ip_forward
+sudo iptables -t nat -L -n | grep 10.8
+sudo iptables -L FORWARD -v -n
 ```
 
-Should return `net.ipv4.ip_forward = 1`. If not, see Section 2.
+If missing, add them manually:
+
+```bash
+sudo iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -j MASQUERADE
+sudo iptables -A FORWARD -s 10.8.0.0/24 -j ACCEPT
+sudo iptables -A FORWARD -d 10.8.0.0/24 -j ACCEPT
+sudo netfilter-persistent save
+```
 
 ### Can't connect to VPN
 
@@ -664,11 +634,11 @@ docker compose restart koreader-sync
 
 ---
 
-## 17. File Structure Summary
+## 18. File Structure Summary
 
 ```
 /srv/docker/
-├── .env                          # Passwords (chmod 600)
+├── .env                          # Passwords and secrets (chmod 600)
 ├── docker-compose.yml            # Main configuration
 ├── homeassistant/                # Home Assistant config
 ├── pihole/
@@ -678,10 +648,15 @@ docker compose restart koreader-sync
 ├── dashboard/
 │   └── index.html                # Dashboard page
 ├── wireguard/                    # WireGuard config
-└── koreader-sync/
-    ├── logs/
-    │   ├── app/                  # Application logs
-    │   └── redis/                # Redis logs
-    └── data/
-        └── redis/                # Redis data
+├── koreader-sync/                # KOReader sync server
+│   ├── logs/
+│   │   ├── app/                  # Application logs
+│   │   └── redis/                # Redis logs
+│   └── data/
+│       └── redis/                # Redis data
+└── beszel/                       # Beszel monitoring
+    ├── data/                     # Hub database
+    └── socket/                   # Hub-agent unix socket
 ```
+
+---

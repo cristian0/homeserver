@@ -18,6 +18,7 @@ Personal self-hosted infrastructure running on Fujitsu Q916 mini PC with Debian.
 | WireGuard | 51820/UDP | VPN server |
 | WireGuard Admin | 51821 | VPN client management |
 | KOReader Sync | 7200 | Reading progress sync (Kindle/Mac) |
+| Beszel | 8090 | Server monitoring |
 
 ## Architecture
 
@@ -25,6 +26,7 @@ Personal self-hosted infrastructure running on Fujitsu Q916 mini PC with Debian.
 - **DNS/DHCP**: Pi-hole serves as network DNS and DHCP server
 - **Remote Access**: All services accessible via VPN only
 - **Networking**: Pi-hole and WireGuard use host networking for proper client IP visibility
+- **Monitoring**: Beszel provides real-time metrics and Docker container stats
 
 ## Quick Start
 
@@ -74,6 +76,12 @@ VPN: http://192.168.1.10 (connect to VPN first)
 **Setup**: Tools → Progress sync → Enter server URL → Register/Login  
 **Access**: Local network only
 
+### Beszel (Server Monitoring)
+
+**URL**: http://192.168.1.10:8090  
+**Features**: CPU, memory, disk, network metrics, Docker container stats, alerts  
+**Access**: Local network or VPN
+
 ## File Structure
 
 ```
@@ -84,7 +92,10 @@ VPN: http://192.168.1.10 (connect to VPN first)
 ├── homeassistant/          # HA config (git-ignored)
 ├── pihole/                 # Pi-hole config (git-ignored)
 ├── wireguard/              # WG config (git-ignored)
-└── koreader-sync/          # Sync server data (git-ignored)
+├── koreader-sync/          # Sync server data (git-ignored)
+└── beszel/                 # Beszel data (git-ignored)
+    ├── data/               # Hub database
+    └── socket/             # Unix socket for hub-agent communication
 ```
 
 ## Repository Setup
@@ -115,5 +126,7 @@ See [home-server-documentation.md](home-server-documentation.md) for detailed se
 
 - Pi-hole acts as DHCP server (router DHCP disabled)
 - IP forwarding enabled for VPN routing
-- WireGuard auto-configures NAT via environment variables
+- WireGuard auto-configures NAT via `WG_POST_UP`/`WG_POST_DOWN` environment variables
 - All containers auto-restart unless stopped manually
+- Beszel agent uses host networking and Docker socket for container monitoring
+- Secrets (passwords, keys, tokens) stored in `.env` file, not in docker-compose.yml

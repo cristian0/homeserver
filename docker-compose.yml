@@ -60,7 +60,7 @@ services:
     container_name: koreader-sync
     image: koreader/kosync:latest
     ports:
-      - "7200:7200"  # Changed from 8084:8080
+      - "7200:7200"
     environment:
       - ENABLE_USER_REGISTRATION=true
     volumes:
@@ -68,3 +68,28 @@ services:
       - ./koreader-sync/logs/redis:/var/log/redis
       - ./koreader-sync/data/redis:/var/lib/redis
     restart: unless-stopped
+
+  beszel:
+    container_name: beszel
+    image: henrygd/beszel:latest
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./beszel/data:/beszel_data
+      - ./beszel/socket:/beszel_socket
+
+  beszel-agent:
+    container_name: beszel-agent
+    image: henrygd/beszel-agent:latest
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./beszel/socket:/beszel_socket
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      LISTEN: /beszel_socket/beszel.sock
+      KEY: ${BESZEL_KEY}
+      TOKEN: ${BESZEL_TOKEN}
+      HUB_URL: http://192.168.1.10:8090
+
