@@ -23,6 +23,7 @@
 | DNS (Pi-hole) | 53 | - |
 | KOReader Sync | 7200 | http://192.168.1.10:7200 |
 | Beszel | 8090 | http://192.168.1.10:8090 |
+| Music Assistant | 8095 | http://192.168.1.10:8095 |
 
 ---
 
@@ -200,6 +201,7 @@ mkdir -p /srv/docker/koreader-sync/logs/redis
 mkdir -p /srv/docker/koreader-sync/data/redis
 mkdir -p /srv/docker/beszel/data
 mkdir -p /srv/docker/beszel/socket
+mkdir -p /srv/docker/music-assistant/data
 sudo chown -R $USER:$USER /srv/docker
 ```
 
@@ -238,7 +240,7 @@ Copy the output hash to `.env`.
 
 ### Beszel Key and Token
 
-The `BESZEL_KEY` and `BESZEL_TOKEN` values are obtained from the Beszel web UI when adding a new system. See Section 17 for setup instructions.
+The `BESZEL_KEY` and `BESZEL_TOKEN` values are obtained from the Beszel web UI when adding a new system. See Section 14 for setup instructions.
 
 ---
 
@@ -247,7 +249,7 @@ The `BESZEL_KEY` and `BESZEL_TOKEN` values are obtained from the Beszel web UI w
 The full configuration is in `docker-compose.yml` in the repository.
 
 **Key design decisions:**
-- Both `pihole` and `wg-easy` use `network_mode: host` so that Pi-hole can see real client IPs instead of Docker's internal bridge IP
+- `pihole`, `wg-easy`, and `music-assistant` use `network_mode: host` — Pi-hole for real client IPs, Music Assistant for mDNS/uPnP player discovery
 - WireGuard auto-configures NAT rules via `WG_POST_UP`/`WG_POST_DOWN`
 - The `BESZEL_KEY` and `BESZEL_TOKEN` must be configured in `.env` after initial Beszel setup (see Section 14)
 
@@ -505,7 +507,83 @@ docker compose restart beszel beszel-agent
 
 ---
 
-## 15. Accessing Services
+## 15. Music Assistant
+
+Music Assistant is a music streaming server that manages and plays music across multiple rooms and devices. It discovers players on the network via mDNS and uPnP.
+
+### Requirements
+
+- 64-bit OS, minimum 2GB RAM (4GB+ recommended)
+- Host networking required for multicast player discovery
+- Players must be on the same network (no VLAN separation)
+
+### Directory Setup
+
+```bash
+mkdir -p /srv/docker/music-assistant/data
+```
+
+### Docker Compose Configuration
+
+See Section 6 for the complete docker-compose.yml. Key points:
+- Uses `network_mode: host` for mDNS/uPnP player discovery
+- Requires `SYS_ADMIN` and `DAC_READ_SEARCH` capabilities for SMB/NFS music library mounting
+- Web UI on port 8095, streaming on port 8097
+
+### Initial Setup
+
+1. Start the service:
+
+```bash
+docker compose up -d music-assistant
+```
+
+2. Access web UI: http://192.168.1.10:8095
+
+3. Follow the setup wizard to configure music providers and players
+
+### Adding Music Libraries
+
+Music Assistant supports multiple sources:
+- Local files (mount additional volumes in docker-compose.yml)
+- Spotify, YouTube Music, and other streaming providers
+- SMB/NFS network shares (configured via the web UI)
+
+To add a local music directory, add a volume to `docker-compose.yml`:
+
+```yaml
+volumes:
+  - ./music-assistant/data:/data/
+  - /path/to/music:/media:ro
+```
+
+### Troubleshooting
+
+#### Players not discovered
+
+Verify host networking is active:
+
+```bash
+docker inspect music-assistant | grep NetworkMode
+```
+
+Ensure multicast traffic is not blocked by firewall rules.
+
+#### Check logs
+
+```bash
+docker compose logs music-assistant --tail 50
+```
+
+#### Restart service
+
+```bash
+docker compose restart music-assistant
+```
+
+---
+
+## 16. Accessing Services
 
 ### From Local Network
 
@@ -517,6 +595,7 @@ docker compose restart beszel beszel-agent
 | WireGuard Admin | http://192.168.1.10:51821 |
 | KOReader Sync | http://192.168.1.10:7200 |
 | Beszel | http://192.168.1.10:8090 |
+| Music Assistant | http://192.168.1.10:8095 |
 
 ### From Outside (VPN Required)
 
@@ -527,7 +606,7 @@ docker compose restart beszel beszel-agent
 
 ---
 
-## 16. Maintenance Commands
+## 17. Maintenance Commands
 
 ### View running containers
 
@@ -565,7 +644,7 @@ All services will restart automatically (restart: unless-stopped).
 
 ---
 
-## 17. Troubleshooting
+## 18. Troubleshooting
 
 ### VPN connected but no internet
 
@@ -634,7 +713,7 @@ docker compose restart koreader-sync
 
 ---
 
-## 18. File Structure Summary
+## 19. File Structure Summary
 
 ```
 /srv/docker/
@@ -654,9 +733,11 @@ docker compose restart koreader-sync
 │   │   └── redis/                # Redis logs
 │   └── data/
 │       └── redis/                # Redis data
-└── beszel/                       # Beszel monitoring
-    ├── data/                     # Hub database
-    └── socket/                   # Hub-agent unix socket
+├── beszel/                       # Beszel monitoring
+│   ├── data/                     # Hub database
+│   └── socket/                   # Hub-agent unix socket
+└── music-assistant/              # Music Assistant
+    └── data/                     # Server data and config
 ```
 
 ---

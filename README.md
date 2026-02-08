@@ -19,13 +19,14 @@ Personal self-hosted infrastructure running on Fujitsu Q916 mini PC with Debian.
 | WireGuard Admin | 51821 | VPN client management |
 | KOReader Sync | 7200 | Reading progress sync (Kindle/Mac) |
 | Beszel | 8090 | Server monitoring |
+| Music Assistant | 8095 | Music streaming & player management |
 
 ## Architecture
 
 - **Security**: Only WireGuard port (51820/UDP) exposed to internet
 - **DNS/DHCP**: Pi-hole serves as network DNS and DHCP server
 - **Remote Access**: All services accessible via VPN only
-- **Networking**: Pi-hole and WireGuard use host networking for proper client IP visibility
+- **Networking**: Pi-hole, WireGuard, and Music Assistant use host networking for proper client IP visibility and player discovery
 - **Monitoring**: Beszel provides real-time metrics and Docker container stats
 
 ## Quick Start
@@ -78,8 +79,14 @@ VPN: http://192.168.1.10 (connect to VPN first)
 
 ### Beszel (Server Monitoring)
 
-**URL**: http://192.168.1.10:8090  
-**Features**: CPU, memory, disk, network metrics, Docker container stats, alerts  
+**URL**: http://192.168.1.10:8090
+**Features**: CPU, memory, disk, network metrics, Docker container stats, alerts
+**Access**: Local network or VPN
+
+### Music Assistant
+
+**URL**: http://192.168.1.10:8095
+**Features**: Music streaming, multi-room audio, player discovery via mDNS/uPnP
 **Access**: Local network or VPN
 
 ## File Structure
@@ -93,9 +100,11 @@ VPN: http://192.168.1.10 (connect to VPN first)
 ├── pihole/                 # Pi-hole config (git-ignored)
 ├── wireguard/              # WG config (git-ignored)
 ├── koreader-sync/          # Sync server data (git-ignored)
-└── beszel/                 # Beszel data (git-ignored)
-    ├── data/               # Hub database
-    └── socket/             # Unix socket for hub-agent communication
+├── beszel/                 # Beszel data (git-ignored)
+│   ├── data/               # Hub database
+│   └── socket/             # Unix socket for hub-agent communication
+└── music-assistant/        # Music Assistant data (git-ignored)
+    └── data/               # Server data and config
 ```
 
 ## Repository Setup
@@ -129,4 +138,5 @@ See [home-server-documentation.md](home-server-documentation.md) for detailed se
 - WireGuard auto-configures NAT via `WG_POST_UP`/`WG_POST_DOWN` environment variables
 - All containers auto-restart unless stopped manually
 - Beszel agent uses host networking and Docker socket for container monitoring
+- Music Assistant uses host networking for mDNS/uPnP player discovery
 - Secrets (passwords, keys, tokens) stored in `.env` file, not in docker-compose.yml
