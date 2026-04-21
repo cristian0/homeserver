@@ -24,8 +24,16 @@ sensor:
   # NOT heating. Used as baseline to subtract from the grid-minus-tracked
   # delta during heating cycles, so constant background loads (fridge,
   # router, standby, always-on LEDs) stop being attributed to the
-  # boiler. The source sensor becomes `unavailable` while the boiler
-  # is heating, and the statistics platform ignores those samples.
+  # boiler.
+  #
+  # The source template sensor is trigger-based with a `condition`
+  # gate: during heating cycles the condition is false, the sensor is
+  # not updated and retains its last state. From the statistics
+  # platform's perspective the source just stops publishing new
+  # samples, but the previously captured samples (within the 6h
+  # window) remain valid. This is important: making the source
+  # `unavailable` during cycles causes the statistics platform to
+  # inherit the unavailability and lose the baseline value.
   - platform: statistics
     name: Untracked baseline while boiler off
     unique_id: untracked_baseline_while_boiler_off
@@ -52,18 +60,41 @@ template:
         device_class: running
         icon: mdi:tumble-dryer
 
-  - sensor:
-      # Untracked power = grid minus sum of all other enabled power
-      # sensors. Exposed ONLY while the boiler is off. Feeds the
-      # statistics sensor above.
+  # Untracked power = grid minus sum of all other power-class sensors.
+  # Updated ONLY when the boiler is OFF: the `condition` block below
+  # gates each trigger evaluation, so during heating cycles the sensor
+  # is not recomputed and retains its last state. This keeps the
+  # statistics sensor that depends on it out of the `unavailable`
+  # path, which was causing the baseline to be lost for the entire
+  # cycle.
+  #
+  # Triggers:
+  #   * on grid power change: captures a fresh sample roughly every
+  #     6 seconds (Shelly Pro EM50 update rate).
+  #   * on HA start: initialises the state after a restart.
+  - trigger:
+      - platform: state
+        entity_id:
+          - sensor.energy_meter_0_power
+      - platform: homeassistant
+        event: start
+    # Baseline must be sampled only when BOTH Ariston boilers are off.
+    # If either is heating, the corresponding load is in the grid and
+    # would inflate the baseline, polluting future boiler-notte
+    # estimates.
+    condition:
+      - condition: state
+        entity_id: binary_sensor.ariston_is_heating_2
+        state: "off"
+      - condition: state
+        entity_id: binary_sensor.ariston_is_heating
+        state: "off"
+    sensor:
       - name: "Untracked power while boiler off"
         unique_id: untracked_power_while_boiler_off
         unit_of_measurement: "W"
         device_class: power
         state_class: measurement
-        availability: >
-          {{ is_state('binary_sensor.ariston_is_heating_2', 'off')
-             and has_value('sensor.energy_meter_0_power') }}
         state: >
           {#
             The list of "other" power sensors is derived at template
@@ -99,6 +130,7 @@ template:
           {% endfor %}
           {{ [grid - ns.total, 0] | max }}
 
+  - sensor:
       # Boiler "notte" (Ariston Velis) instantaneous electric power.
       # This is a STATISTICAL ESTIMATE, not a direct measurement.
       #
@@ -153,9 +185,20 @@ template:
         state_class: measurement
         availability: >
           {{ has_value('sensor.energy_meter_0_power')
-             and has_value('binary_sensor.ariston_is_heating_2') }}
+             and has_value('binary_sensor.ariston_is_heating_2')
+             and has_value('binary_sensor.ariston_is_heating') }}
         state: >
-          {% if is_state('binary_sensor.ariston_is_heating_2', 'on') %}
+          {#
+            Overlap guard: if the other Ariston boiler (bilo) is also
+            heating, we cannot attribute the grid delta to boiler
+            notte alone without a dedicated power sensor on each
+            boiler. Fall back to 0 in that case — the unaccounted
+            consumption shows up as Untracked instead of inflating
+            boiler notte. By design the two boilers now run on
+            separate schedules, so this branch should rarely trigger.
+          #}
+          {% if is_state('binary_sensor.ariston_is_heating_2', 'on')
+                and is_state('binary_sensor.ariston_is_heating', 'off') %}
             {# Keep this exclusion list in sync with the one in
                "Untracked power while boiler off" above. #}
             {% set excluded = [

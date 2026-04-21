@@ -43,7 +43,8 @@ partire dal meter generale (Shelly Pro EM50 canale 0). Il segnale è
 chiamato **"Boiler notte estimated power"** per evidenziare che si
 tratta di una stima derivata, non di una misura diretta.
 
-Durante i cicli di riscaldamento viene calcolato come:
+Durante i cicli di riscaldamento del **solo** boiler notte viene
+calcolato come:
 
 ```
 boiler_W = max(
@@ -51,6 +52,13 @@ boiler_W = max(
     0
 )
 ```
+
+Se si accende contemporaneamente anche l'altro boiler Ariston
+("boiler bilo"), la stima cade a 0 (overlap guard). Non ci sono
+sensori di potenza dedicati per distinguere i due boiler nella grid,
+quindi in caso di overlap il consumo confluisce sulla barra
+"Untracked" invece di gonfiare la stima di boiler notte. Per design
+i due boiler ora hanno automatismi separati e l'overlap è raro.
 
 dove `Σ(other_power_sensors_W)` **non è una lista fissa** ma viene
 derivata al volo da Home Assistant iterando tutte le entità
@@ -73,6 +81,21 @@ Il termine `baseline_W` è la media mobile del consumo **non tracciato**
 misurato mentre il boiler era **spento** (finestra di 6 ore, calcolata
 dal sensore built-in HA `statistics` a partire dal template intermedio
 `sensor.untracked_power_while_boiler_off`).
+
+Il template intermedio è implementato come **trigger-based template
+sensor** con una `condition` che lo mantiene aggiornato solo quando
+**entrambi** i boiler Ariston sono spenti
+(`binary_sensor.ariston_is_heating_2 == off` **e**
+`binary_sensor.ariston_is_heating == off`). Durante qualsiasi ciclo
+la condizione è falsa e lo stato del sensore **resta congelato**
+all'ultimo valore valido. Questo ha due benefici:
+
+- Il sensore `statistics` non vede mai `unavailable` sul source e
+  continua a esporre la media (i campioni già nel finestra di 6h
+  restano validi).
+- La baseline non viene inquinata dal consumo del secondo boiler
+  (boiler "bilo"): se si accende, il suo assorbimento entra nella
+  grid ma non nella baseline.
 
 Un helper di integrazione Riemann trasforma il segnale di potenza (W)
 in un contatore cumulativo di energia (kWh) monotonico, nel sensore
@@ -149,11 +172,24 @@ per pochi minuti dopo un restart, ma la dashboard resta consistente.
 - **Distribuzione oraria proporzionale** al tempo di riscaldamento
   effettivo, non all'istante di pubblicazione del dato cloud.
 
+### Confronto con il dato Ariston web
+
+Il portale Ariston espone un consumo giornaliero etichettato
+"Consumption: heating element (kWh)". È il consumo **della sola
+resistenza elettrica**; il contributo della pompa di calore
+(compressore, ventola, pompa di circolazione) **non** è incluso. Per
+il boiler Velis Nuos il delta pompa di calore è tipicamente
+500-700 W mentre il gruppo è in marcia. La nostra stima basata sulla
+grid Shelly include **entrambi** i contributi e quindi è sempre più
+alta del valore "heating element" del portale Ariston — questo è
+atteso, non è un errore.
+
 ### Caveat noti
 
-- La stima riflette il **mix elettrico reale**, che è più alto del
-  valore termico riportato dal sensore cloud Ariston (rapporto ~2x
-  nel nostro caso). La nuova cifra è quella corretta per la bolletta.
+- La stima riflette il **consumo elettrico totale** del boiler
+  (resistenza + pompa di calore + ausiliari). Il valore sarà sempre
+  più alto del dato "heating element only" esposto dal portale web
+  Ariston. Per la bolletta conta il totale, non la parte.
 - Come sopra, carichi non tracciati attivi **solo durante** i cicli
   boiler rimangono assorbiti nella stima. Tracciare quei dispositivi
   è l'unica mitigazione.
