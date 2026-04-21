@@ -106,36 +106,46 @@
       title: "Asciugatrice \U0001F9FB"
     action: notify.mobile_app_pixel_7_fabiola
   mode: single
-- id: '1775988742280'
-  alias: boiler giorno off
-  description: ''
+- id: boiler_giorno_schedule_on
+  alias: Boiler giorno - accensione schedule
+  description: >
+    Accende la presa del boiler giorno in due finestre fisse (mattina e sera),
+    dimensionate sul warm-up di un tank 80L @ 45°C partendo da ~30°C. Sostituisce
+    il vecchio mirror 1:1 sul boiler notte. Ad ogni accensione imposta anche il
+    countdown hardware della Tapo a 120 min come safety net: se HA non riesce a
+    comandare lo spegnimento, la presa si autospegne da sola.
   triggers:
-  - type: turned_off
-    device_id: 71b535c79bdf04414e2aae881a779c61
-    entity_id: a99d635fab29eabc9d50c1bb7c785e46
-    domain: binary_sensor
-    trigger: device
-  conditions: []
-  actions:
-  - type: turn_off
-    device_id: a365420e920d976df4beae8f3644cfd7
-    entity_id: 93414600afc813ecee612449ddef843d
-    domain: switch
-  mode: single
-- id: '1775989113081'
-  alias: boiler giorno on
-  description: ''
-  triggers:
-  - type: turned_on
-    device_id: 71b535c79bdf04414e2aae881a779c61
-    entity_id: a99d635fab29eabc9d50c1bb7c785e46
-    domain: binary_sensor
-    trigger: device
+  - trigger: time
+    at: 05:30:00
+    id: mattina
+  - trigger: time
+    at: 18:00:00
+    id: sera
   conditions: []
   actions:
   - action: switch.turn_on
-    metadata: {}
     target:
       entity_id: switch.boiler_giorno
-    data: {}
+  - action: number.set_value
+    target:
+      entity_id: number.boiler_giorno_turn_off_in
+    data:
+      value: 120
+  mode: single
+- id: boiler_giorno_schedule_off
+  alias: Boiler giorno - spegnimento schedule
+  description: >
+    Spegne la presa all'inizio della finestra d'uso (07:00 e 19:30). Così al
+    primo prelievo il tank è caldo e si raffredda durante l'uso invece di
+    perdere calore in standby.
+  triggers:
+  - trigger: time
+    at: 07:00:00
+  - trigger: time
+    at: 19:30:00
+  conditions: []
+  actions:
+  - action: switch.turn_off
+    target:
+      entity_id: switch.boiler_giorno
   mode: single
