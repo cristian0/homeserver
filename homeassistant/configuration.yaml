@@ -1,0 +1,178 @@
+# Loads default set of integrations. Do not remove.
+default_config:
+# Load frontend themes from the themes folder
+frontend:
+  themes: !include_dir_merge_named themes
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+# Riemann-sum integration that converts
+# sensor.boiler_notte_estimated_power (W) into a monotonic cumulative
+# energy counter (kWh), compatible with the Energy Dashboard.
+sensor:
+  - platform: integration
+    source: sensor.boiler_notte_estimated_power
+    name: Boiler notte estimated energy
+    unique_id: boiler_notte_estimated_energy
+    unit_prefix: k
+    unit_time: h
+    method: left
+    round: 3
+
+  # Rolling mean of untracked power measured only while the boiler is
+  # NOT heating. Used as baseline to subtract from the grid-minus-tracked
+  # delta during heating cycles, so constant background loads (fridge,
+  # router, standby, always-on LEDs) stop being attributed to the
+  # boiler. The source sensor becomes `unavailable` while the boiler
+  # is heating, and the statistics platform ignores those samples.
+  - platform: statistics
+    name: Untracked baseline while boiler off
+    unique_id: untracked_baseline_while_boiler_off
+    entity_id: sensor.untracked_power_while_boiler_off
+    state_characteristic: mean
+    sampling_size: 2000
+    max_age:
+      hours: 6
+
+# Template sensors
+template:
+  - binary_sensor:
+      - name: "Lavatrice in funzione"
+        state: "{{ states('sensor.presa_lavatrice_power') | float > 50 }}"
+        delay_off:
+          minutes: 3
+        device_class: running
+        icon: mdi:washing-machine
+
+      - name: "Asciugatrice in funzione"
+        state: "{{ states('sensor.shellyplugsg3_d0cf13c75ecc_power') | float > 50 }}"
+        delay_off:
+          minutes: 6
+        device_class: running
+        icon: mdi:tumble-dryer
+
+  - sensor:
+      # Untracked power = grid minus sum of all other enabled power
+      # sensors. Exposed ONLY while the boiler is off. Feeds the
+      # statistics sensor above.
+      - name: "Untracked power while boiler off"
+        unique_id: untracked_power_while_boiler_off
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        availability: >
+          {{ is_state('binary_sensor.ariston_is_heating_2', 'off')
+             and has_value('sensor.energy_meter_0_power') }}
+        state: >
+          {#
+            The list of "other" power sensors is derived at template
+            evaluation time from every `sensor.*` entity with
+            device_class=power, minus a small exclusion set. Adding a
+            new smart plug or Shelly EM channel requires no edit here:
+            the new power sensor is picked up automatically as long as
+            its device_class is `power`.
+
+            Excluded on purpose:
+              * sensor.energy_meter_0_power
+                    => grid source, already assigned to `grid` below
+              * sensor.boiler_notte_estimated_power
+                    => the estimate itself; avoids self-feedback
+              * sensor.untracked_power_while_boiler_off
+                    => this very sensor; avoids self-reference if HA
+                       inherits device_class=power on the helper
+              * sensor.untracked_baseline_while_boiler_off
+                    => the statistics helper, same reason as above
+          #}
+          {% set excluded = [
+            'sensor.energy_meter_0_power',
+            'sensor.boiler_notte_estimated_power',
+            'sensor.untracked_power_while_boiler_off',
+            'sensor.untracked_baseline_while_boiler_off',
+          ] %}
+          {% set grid = states('sensor.energy_meter_0_power') | float(0) %}
+          {% set ns = namespace(total=0.0) %}
+          {% for e in states.sensor
+              if e.attributes.device_class == 'power'
+              and e.entity_id not in excluded %}
+            {% set ns.total = ns.total + (e.state | float(0)) %}
+          {% endfor %}
+          {{ [grid - ns.total, 0] | max }}
+
+      # Boiler "notte" (Ariston Velis) instantaneous electric power.
+      # This is a STATISTICAL ESTIMATE, not a direct measurement.
+      #
+      # Why this exists:
+      #   The Ariston cloud DHW energy sensor is non-monotonic (state
+      #   resets to 0 between heating cycles) and publishes cycle
+      #   totals with ~2h delay, which causes a full cycle's kWh to be
+      #   attributed to a single hour in the Energy Dashboard —
+      #   producing negative "Untracked" bars.
+      #
+      # How it works:
+      #   When the boiler is heating, the estimated power is computed
+      #   as
+      #     grid_power
+      #       - sum(all other power-class sensors)
+      #       - baseline_untracked_power
+      #   where the baseline is the rolling mean of untracked power
+      #   observed while the boiler was NOT heating (see the
+      #   statistics sensor above). The result is clipped to >= 0.
+      #   When the boiler is off the sensor is forced to 0.
+      #
+      # What the baseline covers:
+      #   Background loads that are approximately constant whether the
+      #   boiler is on or off — fridge average, router, switches,
+      #   standby consumption, always-on LEDs. These are no longer
+      #   attributed to the boiler.
+      #
+      # What the baseline does NOT cover:
+      #   Untracked loads that turn on or off *in coincidence* with a
+      #   heating cycle (e.g. A/C starting during a boiler cycle) still
+      #   get attributed to the boiler. Adding those devices as
+      #   power-class sensors automatically removes them from the
+      #   estimate (see the `others` loop: the exclusion list is
+      #   minimal, anything else is subtracted).
+      #
+      # Guarantees:
+      #   * boiler_power <= grid_power - other_tracked_power by
+      #     construction, so the Untracked bar can no longer go
+      #     negative because of this sensor.
+      #   * Hourly distribution matches real heating time, not cloud
+      #     publication time.
+      #
+      # Cold start:
+      #   If the baseline statistics sensor has not yet accumulated
+      #   samples (first minutes after an HA restart), its state is
+      #   taken as 0 via `float(0)`, falling back to the un-corrected
+      #   grid-minus-tracked formula. Safe default.
+      - name: "Boiler notte estimated power"
+        unique_id: boiler_notte_estimated_power
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        availability: >
+          {{ has_value('sensor.energy_meter_0_power')
+             and has_value('binary_sensor.ariston_is_heating_2') }}
+        state: >
+          {% if is_state('binary_sensor.ariston_is_heating_2', 'on') %}
+            {# Keep this exclusion list in sync with the one in
+               "Untracked power while boiler off" above. #}
+            {% set excluded = [
+              'sensor.energy_meter_0_power',
+              'sensor.boiler_notte_estimated_power',
+              'sensor.untracked_power_while_boiler_off',
+              'sensor.untracked_baseline_while_boiler_off',
+            ] %}
+            {% set grid = states('sensor.energy_meter_0_power') | float(0) %}
+            {% set ns = namespace(total=0.0) %}
+            {% for e in states.sensor
+                if e.attributes.device_class == 'power'
+                and e.entity_id not in excluded %}
+              {% set ns.total = ns.total + (e.state | float(0)) %}
+            {% endfor %}
+            {% set baseline = states('sensor.untracked_baseline_while_boiler_off') | float(0) %}
+            {{ [grid - ns.total - baseline, 0] | max }}
+          {% else %}
+            0
+          {% endif %}

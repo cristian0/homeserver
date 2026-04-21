@@ -1,3 +1,7 @@
-# Keep this directory in Git
+# Home Assistant runtime directory. By default, git-ignore everything:
+# HA writes secrets (.storage), recorder DB, logs, downloaded custom
+# components, TTS cache, etc. We only track hand-edited source config
+# listed below.
 *
 !.gitignore
+!configuration.yaml
