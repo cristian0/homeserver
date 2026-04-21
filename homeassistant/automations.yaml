@@ -1,0 +1,141 @@
+- id: '1770727142611'
+  alias: Scena giorno alle 7 dei giorni festivi
+  description: ''
+  triggers:
+  - trigger: time
+    at: 07:00:00
+    weekday:
+    - mon
+    - tue
+    - wed
+    - thu
+    - fri
+  conditions: []
+  actions:
+  - action: scene.turn_on
+    metadata: {}
+    target:
+      entity_id: scene.buongiorno
+    data: {}
+  mode: single
+- id: '1773851340463'
+  alias: Ritira la tenda della veranda prima della pioggia
+  description: Ritira la tenda della veranda prima che piova, controllando le previsioni
+    orarie ogni 30 minuti. Si attiva anche quando il meteo attuale peggiora. Controlla
+    le prossime 3 ore di previsioni per pioggia, neve, temporale o vento forte. Ritira
+    = open_cover (posizione 100, tenda arrotolata). Abbassa = close_cover (posizione
+    0, tenda estesa).
+  triggers:
+  - platform: time_pattern
+    minutes: /30
+    id: forecast_check
+  - platform: state
+    entity_id: weather.home
+    id: weather_change
+  conditions:
+  - condition: state
+    entity_id: cover.soggiorno_tenda_veranda
+    state: closed
+  actions:
+  - choose:
+    - conditions:
+      - condition: trigger
+        id: weather_change
+      - condition: template
+        value_template: '{{ states(''weather.home'') in [''lightning-rainy'',''pouring'',''rainy'',''snowy'',''snowy-rainy'',''windy'',''windy-variant'',''exceptional'']
+          }}'
+      sequence:
+      - action: cover.open_cover
+        target:
+          entity_id: cover.soggiorno_tenda_veranda
+    - conditions:
+      - condition: trigger
+        id: forecast_check
+      sequence:
+      - action: weather.get_forecasts
+        target:
+          entity_id: weather.home
+        data:
+          type: hourly
+        response_variable: forecast_data
+      - condition: template
+        value_template: '{{ forecast_data[''weather.home''].forecast[:3] | selectattr(''condition'',
+          ''in'', [''lightning-rainy'',''pouring'',''rainy'',''snowy'',''snowy-rainy'',''windy'',''windy-variant'',''exceptional''])
+          | list | count > 0 }}'
+      - action: cover.open_cover
+        target:
+          entity_id: cover.soggiorno_tenda_veranda
+  mode: single
+- id: '1775200066327'
+  alias: Lavatrice - Fine ciclo
+  description: Notifica su iPhone Cristiano e Pixel Fabiola quando la lavatrice termina
+    il ciclo.
+  triggers:
+  - platform: state
+    entity_id: binary_sensor.lavatrice_in_funzione
+    from: 'on'
+    to: 'off'
+  conditions: []
+  actions:
+  - data:
+      title: "Lavatrice \U0001F9FA"
+      message: Il ciclo è terminato! Vai a stendere.
+    action: notify.mobile_app_iphone_cristiano
+  - data:
+      title: "Lavatrice \U0001F9FA"
+      message: Il ciclo è terminato! Vai a stendere.
+    action: notify.mobile_app_pixel_7_fabiola
+  mode: single
+- id: '1775200082952'
+  alias: Asciugatrice - Fine ciclo
+  description: Notifica su iPhone Cristiano e Pixel Fabiola quando l'asciugatrice
+    termina il ciclo.
+  triggers:
+  - entity_id: binary_sensor.asciugatrice_in_funzione
+    from: 'on'
+    platform: state
+    to: 'off'
+  conditions: []
+  actions:
+  - data:
+      message: Il ciclo è terminato!
+      title: "Asciugatrice \U0001F9FB"
+    action: notify.mobile_app_iphone_cristiano
+  - data:
+      message: Il ciclo è terminato!
+      title: "Asciugatrice \U0001F9FB"
+    action: notify.mobile_app_pixel_7_fabiola
+  mode: single
+- id: '1775988742280'
+  alias: boiler giorno off
+  description: ''
+  triggers:
+  - type: turned_off
+    device_id: 71b535c79bdf04414e2aae881a779c61
+    entity_id: a99d635fab29eabc9d50c1bb7c785e46
+    domain: binary_sensor
+    trigger: device
+  conditions: []
+  actions:
+  - type: turn_off
+    device_id: a365420e920d976df4beae8f3644cfd7
+    entity_id: 93414600afc813ecee612449ddef843d
+    domain: switch
+  mode: single
+- id: '1775989113081'
+  alias: boiler giorno on
+  description: ''
+  triggers:
+  - type: turned_on
+    device_id: 71b535c79bdf04414e2aae881a779c61
+    entity_id: a99d635fab29eabc9d50c1bb7c785e46
+    domain: binary_sensor
+    trigger: device
+  conditions: []
+  actions:
+  - action: switch.turn_on
+    metadata: {}
+    target:
+      entity_id: switch.boiler_giorno
+    data: {}
+  mode: single
