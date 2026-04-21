@@ -116,10 +116,10 @@
     comandare lo spegnimento, la presa si autospegne da sola.
   triggers:
   - trigger: time
-    at: 05:30:00
+    at: '05:30:00'
     id: mattina
   - trigger: time
-    at: 18:00:00
+    at: '18:00:00'
     id: sera
   conditions: []
   actions:
@@ -140,9 +140,9 @@
     perdere calore in standby.
   triggers:
   - trigger: time
-    at: 07:00:00
+    at: '07:00:00'
   - trigger: time
-    at: 19:30:00
+    at: '19:30:00'
   conditions: []
   actions:
   - action: switch.turn_off
