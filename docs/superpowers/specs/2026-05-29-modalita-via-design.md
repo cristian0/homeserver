@@ -61,9 +61,20 @@ qualsiasi momento).
 | `input_boolean.modalita_via` | input_boolean | off | Interruttore principale della modalità. |
 | `input_datetime.rientro` | input_datetime (date + time) | — | Data e ora di arrivo previsto. |
 | `input_number.anticipo_riscaldamento_ore` | input_number (min 1, max 12, step 0.5) | 4 | Ore di anticipo del pre-heat rispetto al rientro. |
+| `input_text.modalita_via_boiler_mode` | input_text (max 20) | — | Backup dell'`operation_mode` del boiler notte all'attivazione, per ripristinarlo all'uscita (vedi nota sotto). |
 
-Niente template/helper di stato aggiuntivi: lo stato della modalità è interamente
-in `input_boolean.modalita_via`.
+Lo stato della modalità è interamente in `input_boolean.modalita_via`.
+`input_text.modalita_via_boiler_mode` è solo un appoggio per il ripristino del
+modo boiler.
+
+> **Nota emersa in test (2026-05-29):** `scene.turn_on` **non** ripristina
+> l'`operation_mode` del `water_heater` Ariston (verificato: la scena riapplica
+> switch e cover ma lascia il boiler nel modo corrente). Quindi il modo del
+> boiler notte viene salvato in `input_text.modalita_via_boiler_mode`
+> all'attivazione e ripristinato esplicitamente con
+> `water_heater.set_operation_mode` all'uscita. Il `water_heater.turn_off` in
+> ingresso è di fatto un no-op su questa integrazione: lo spegnimento reale è il
+> taglio di alimentazione via `switch.ariston_power_2`.
 
 ## Scene snapshot (create a runtime all'attivazione)
 
@@ -84,23 +95,28 @@ le tapparelle, e viceversa.
 - **Trigger:** stato di `input_boolean.modalita_via`.
 - **Azioni:** `choose` sul nuovo stato.
   - **→ on (ingresso ①):**
-    1. `scene.create` di `snapshot_via_boiler` e `snapshot_via_tapparelle`.
-    2. Boiler OFF totale: `switch.turn_off` su `switch.ariston_power_2` e
+    1. Backup del modo boiler: `input_text.set_value` su
+       `input_text.modalita_via_boiler_mode` = `{{ states('water_heater.boiler_notte') }}`.
+    2. `scene.create` di `snapshot_via_boiler` e `snapshot_via_tapparelle`.
+    3. Boiler OFF totale: `switch.turn_off` su `switch.ariston_power_2` e
        `switch.boiler_giorno`; `water_heater.turn_off` su `water_heater.boiler_notte`.
-    3. `cover.set_cover_position` a `50` su tutte le tapparelle in scope.
-    4. `automation.turn_off` su `buongiorno`,
-       `boiler_giorno_accensione_schedule`, `boiler_giorno_spegnimento_schedule`.
-    5. Assicura il mirror disabilitato (`automation.turn_off` su
-       `modalita_via_mirror_boiler_giorno`).
+    4. `cover.set_cover_position` a `50` su tutte le tapparelle in scope.
+    5. `automation.turn_off` su `buongiorno`,
+       `boiler_giorno_accensione_schedule`, `boiler_giorno_spegnimento_schedule`,
+       e il mirror `modalita_via_mirror_boiler_giorno`.
     6. Notifica push (iPhone Cristiano).
   - **→ off (ripristino ③):**
     1. `automation.turn_off` del mirror boiler giorno.
     2. `scene.turn_on` di `snapshot_via_tapparelle` e `snapshot_via_boiler`
-       (boiler notte torna al modo originale, es. PROGRAM; idempotente se il
-       pre-heat è già avvenuto).
-    3. `automation.turn_on` su `buongiorno`,
+       (ripristina tapparelle e switch — incl. `ariston_power_2` — al valore
+       precedente; `continue_on_error`).
+    3. Ripristino esplicito del modo boiler: se
+       `input_text.modalita_via_boiler_mode` è in `[MANUAL, PROGRAM, BOOST]`,
+       `water_heater.set_operation_mode` su `water_heater.boiler_notte` con quel
+       valore (la scena non lo fa — vedi nota nella sezione Helper).
+    4. `automation.turn_on` su `buongiorno`,
        `boiler_giorno_accensione_schedule`, `boiler_giorno_spegnimento_schedule`.
-    4. Notifica push.
+    5. Notifica push.
 
 ### B. `Modalità via - pre-heat` (`mode: single`)
 - **Trigger:** `template` — `now() >= (rientro − anticipo_ore)`.
