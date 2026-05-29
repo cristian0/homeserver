@@ -62,10 +62,26 @@ qualsiasi momento).
 | `input_datetime.rientro` | input_datetime (date + time) | — | Data e ora di arrivo previsto. |
 | `input_number.anticipo_riscaldamento_ore` | input_number (min 1, max 12, step 0.5) | 4 | Ore di anticipo del pre-heat rispetto al rientro. |
 | `input_text.modalita_via_boiler_mode` | input_text (max 20) | — | Backup dell'`operation_mode` del boiler notte all'attivazione, per ripristinarlo all'uscita (vedi nota sotto). |
+| `input_boolean.modalita_via_applicata` | input_boolean | off | Flag interno: marca un'attivazione *reale* andata a buon fine. Il ripristino agisce solo se questo flag è on (vedi guard 24h). |
 
-Lo stato della modalità è interamente in `input_boolean.modalita_via`.
-`input_text.modalita_via_boiler_mode` è solo un appoggio per il ripristino del
-modo boiler.
+Lo stato della modalità è in `input_boolean.modalita_via`.
+`input_text.modalita_via_boiler_mode` e `input_boolean.modalita_via_applicata`
+sono appoggi interni (non in dashboard).
+
+## Guard 24h all'attivazione
+
+All'accensione di `input_boolean.modalita_via`, se `input_datetime.rientro` è a
+**meno di 24 ore** da adesso (o non impostato / nel passato), l'attivazione viene
+**bloccata**: nessuna azione viene applicata, viene inviata una notifica e
+`input_boolean.modalita_via` viene rispento. Condizione di blocco:
+`state_attr('input_datetime.rientro','timestamp')|float(0) < now().timestamp() + 86400`.
+
+Rispegnere il toggle ri-triggera il ramo di ripristino: per evitare che riapplichi
+scene di una sessione precedente, il ripristino è protetto dal flag
+`input_boolean.modalita_via_applicata`, che viene messo a on **solo dopo** che il
+guard è superato. Un'attivazione bloccata non setta il flag, quindi il ripristino
+non fa nulla. Conseguenza: con questo guard, `input_datetime.rientro` ≥ 24h è
+**obbligatorio** per attivare (supera la precedente nota "rientro opzionale").
 
 > **Nota emersa in test (2026-05-29):** `scene.turn_on` **non** ripristina
 > l'`operation_mode` del `water_heater` Ariston (verificato: la scena riapplica
@@ -95,9 +111,13 @@ le tapparelle, e viceversa.
 - **Trigger:** stato di `input_boolean.modalita_via`.
 - **Azioni:** `choose` sul nuovo stato.
   - **→ on (ingresso ①):**
-    1. Backup del modo boiler: `input_text.set_value` su
+    0. **Guard 24h:** se `rientro` < `now + 24h` → notifica "non attivata",
+       `input_boolean.turn_off` su `modalita_via`, `stop`. Altrimenti continua.
+    1. Marca attivazione reale: `input_boolean.turn_on` su
+       `input_boolean.modalita_via_applicata`.
+    2. Backup del modo boiler: `input_text.set_value` su
        `input_text.modalita_via_boiler_mode` = `{{ states('water_heater.boiler_notte') }}`.
-    2. `scene.create` di `snapshot_via_boiler` e `snapshot_via_tapparelle`.
+    3. `scene.create` di `snapshot_via_boiler` e `snapshot_via_tapparelle`.
     3. Boiler OFF totale: `switch.turn_off` su `switch.ariston_power_2` e
        `switch.boiler_giorno`; `water_heater.turn_off` su `water_heater.boiler_notte`.
     4. `cover.set_cover_position` a `50` su tutte le tapparelle in scope.
@@ -106,6 +126,9 @@ le tapparelle, e viceversa.
        e il mirror `modalita_via_mirror_boiler_giorno`.
     6. Notifica push (iPhone Cristiano).
   - **→ off (ripristino ③):**
+    0. **Flag guard:** se `input_boolean.modalita_via_applicata` è off (nessuna
+       attivazione reale, es. rollback di un blocco) → `stop`. Altrimenti
+       `input_boolean.turn_off` sul flag e continua.
     1. `automation.turn_off` del mirror boiler giorno.
     2. `scene.turn_on` di `snapshot_via_tapparelle` e `snapshot_via_boiler`
        (ripristina tapparelle e switch — incl. `ariston_power_2` — al valore

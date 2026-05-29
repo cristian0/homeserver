@@ -184,10 +184,10 @@
         entity_id: switch.boiler_giorno
 - id: modalita_via_gestione
   alias: Modalità via - gestione
-  description: 'All''accensione di input_boolean.modalita_via: backup modo boiler, snapshot, spegne il
-    boiler della casa principale, tapparelle al 50%, sospende le automazioni giornaliere. Allo spegnimento:
-    ripristina stato esatto (tapparelle/switch via scena, modo boiler via set_operation_mode) e riattiva
-    tutto. Non tocca alcuna entità bilo.'
+  description: 'Attivazione: blocca se il rientro e'' a meno di 24h; altrimenti backup modo boiler, snapshot,
+    spegne boiler casa principale, tapparelle 50%, sospende automazioni giornaliere. Disattivazione: ripristina
+    (solo se attivazione reale) tapparelle/switch via scena + modo boiler via set_operation_mode, riattiva
+    tutto. Flag input_boolean.modalita_via_applicata marca un''attivazione reale. Mai bilo.'
   mode: single
   triggers:
   - trigger: state
@@ -205,6 +205,23 @@
       - condition: trigger
         id: attiva
       sequence:
+      - if:
+        - condition: template
+          value_template: '{{ state_attr(''input_datetime.rientro'',''timestamp'')|float(0) < now().timestamp()
+            + 86400 }}'
+        then:
+        - action: notify.mobile_app_iphone_cristiano
+          data:
+            title: ⛔ Modalità via non attivata
+            message: Imposta una data di rientro ad almeno 24 ore da adesso, poi riattiva la modalità
+              via.
+        - action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.modalita_via
+        - stop: 'Rientro a meno di 24h: attivazione bloccata'
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.modalita_via_applicata
       - action: input_text.set_value
         target:
           entity_id: input_text.modalita_via_boiler_mode
@@ -263,12 +280,21 @@
       - action: notify.mobile_app_iphone_cristiano
         data:
           title: 🏠 Modalità via attivata
-          message: Boiler spento, tapparelle al 50%, automazioni giornaliere sospese. Imposta la data
-            di rientro per il pre-riscaldamento.
+          message: Boiler spento, tapparelle al 50%, automazioni giornaliere sospese. Rientro impostato;
+            il boiler ripartirà in automatico prima del tuo arrivo.
     - conditions:
       - condition: trigger
         id: ripristina
       sequence:
+      - if:
+        - condition: state
+          entity_id: input_boolean.modalita_via_applicata
+          state: 'off'
+        then:
+        - stop: Nessuna attivazione reale da ripristinare
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.modalita_via_applicata
       - action: automation.turn_off
         target:
           entity_id: automation.modalita_via_mirror_boiler_giorno

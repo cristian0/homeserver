@@ -117,6 +117,13 @@ max: 20
 # → input_text.modalita_via_boiler_mode
 icon: mdi:water-boiler
 ```
+```yaml
+# input_boolean — flag interno: attivazione reale (guard 24h, vedi Task 3)
+domain: input_boolean
+name: "Modalità via applicata"
+# → input_boolean.modalita_via_applicata
+icon: mdi:flag-checkered
+```
 
 **Step 1 (Variante B — YAML):** aggiungere a `homeassistant/configuration.yaml`:
 ```yaml
@@ -255,6 +262,23 @@ actions:
           - condition: trigger
             id: attiva
         sequence:
+          # GUARD 24h: blocca se il rientro è a meno di 24h (o non impostato)
+          - if:
+              - condition: template
+                value_template: "{{ state_attr('input_datetime.rientro','timestamp')|float(0) < now().timestamp() + 86400 }}"
+            then:
+              - action: notify.mobile_app_iphone_cristiano
+                data:
+                  title: "⛔ Modalità via non attivata"
+                  message: "Imposta una data di rientro ad almeno 24 ore da adesso, poi riattiva la modalità via."
+              - action: input_boolean.turn_off
+                target:
+                  entity_id: input_boolean.modalita_via
+              - stop: "Rientro a meno di 24h: attivazione bloccata"
+          # marca attivazione reale (protegge il ramo di ripristino)
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.modalita_via_applicata
           - action: input_text.set_value
             target:
               entity_id: input_text.modalita_via_boiler_mode
@@ -321,6 +345,16 @@ actions:
           - condition: trigger
             id: ripristina
         sequence:
+          # se non c'è stata un'attivazione reale (es. rollback di un blocco), non ripristinare
+          - if:
+              - condition: state
+                entity_id: input_boolean.modalita_via_applicata
+                state: "off"
+            then:
+              - stop: "Nessuna attivazione reale da ripristinare"
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.modalita_via_applicata
           - action: automation.turn_off
             target:
               entity_id: automation.modalita_via_mirror_boiler_giorno
@@ -578,3 +612,5 @@ Eseguito via API diretta (MCP bloccato da macOS): helper via WebSocket, automazi
 **Fix emerso dal test:** `scene.turn_on` non ripristina l'`operation_mode` del `water_heater` Ariston. Aggiunto helper `input_text.modalita_via_boiler_mode` (backup in ①) + `water_heater.set_operation_mode` esplicito in ③. `water_heater.turn_off` resta un no-op: lo spegnimento reale è `switch.ariston_power_2` off.
 
 **Test live end-to-end superato:** attivazione (boiler off, tapparelle 50%, automazioni sospese, scene create), pre-heat (power_2 on, boiler MANUAL, mirror on), rientro (modalità off, tapparelle 100%, automazioni on, boiler tornato a PROGRAM, mirror off). Stato finale = baseline. Bilo invariato per l'intero test.
+
+**Aggiunta guard 24h (richiesta successiva):** nuovo helper `input_boolean.modalita_via_applicata` (flag attivazione reale). All'attivazione, se `rientro < now+24h` → notifica + rispegne il toggle + `stop`, senza applicare nulla. Il ramo di ripristino agisce solo se il flag è on (evita di riapplicare scene vecchie quando il toggle si rispegne in un blocco). Testato: rientro a +2h → bloccato (nulla toccato); rientro a +48h → ciclo attiva+ripristino OK. `rientro` ≥ 24h ora obbligatorio per attivare.
