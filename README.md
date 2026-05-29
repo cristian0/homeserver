@@ -26,6 +26,7 @@ Personal self-hosted infrastructure running on Fujitsu Q916 mini PC with Debian.
 - **Security**: Only WireGuard port (51820/UDP) exposed to internet
 - **DNS/DHCP**: Pi-hole serves as network DNS and DHCP server
 - **Remote Access**: All services accessible via VPN only
+- **Physical link**: Wired **Ethernet** (`enp0s25`, static `192.168.1.10`). The USB WiFi dongle was retired after causing recurring network drops that left the box unreachable until a physical reboot — see [FREEZE-INVESTIGATION.md](FREEZE-INVESTIGATION.md). WiFi stays configured but with `autoconnect=no` as an emergency-only fallback.
 - **Networking**: Pi-hole, WireGuard, and Music Assistant use host networking for proper client IP visibility and player discovery
 - **Monitoring**: Beszel provides real-time metrics and Docker container stats
 

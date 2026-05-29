@@ -29,6 +29,8 @@
 
 ## 1. WiFi Driver Setup (RTL8188FTV)
 
+> **Note (2026-05-29):** The server now runs on **wired Ethernet** (`enp0s25`, static `192.168.1.10`) as its primary and only active connection. The USB WiFi adapter below caused recurring network drops that left the box unreachable until a physical reboot — see [FREEZE-INVESTIGATION.md](FREEZE-INVESTIGATION.md). The WiFi profile is kept for reference / emergency fallback only (`connection.autoconnect=no`); re-enable manually with `nmcli connection up pertugio` if ever needed.
+
 The USB WiFi adapter uses chipset **Realtek RTL8188FTV** (USB ID: `0bda:f179`). The driver was already bundled in Debian.
 
 ### Verify Interface
@@ -710,6 +712,14 @@ Restart service:
 ```bash
 docker compose restart koreader-sync
 ```
+
+### Server randomly freezes / unreachable on all ports
+
+If the whole server becomes unreachable (SSH and every Docker service) and only a physical
+reboot recovers it, see **[FREEZE-INVESTIGATION.md](FREEZE-INVESTIGATION.md)**. Root causes were
+a Haswell deep C-state hang and a flaky USB WiFi link. Mitigations in place: a hardware watchdog
+auto-recovers true hangs, deep C-states are disabled (`intel_idle.max_cstate=1`), WiFi power-save
+is off, and kernel crashes are captured via pstore (`/var/lib/systemd/pstore/`).
 
 ---
 
