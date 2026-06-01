@@ -281,7 +281,18 @@ docker compose logs -f
 
 ## 9. Pi-hole DHCP Configuration
 
-Since the router doesn't allow changing DNS settings, Pi-hole acts as DHCP server.
+> **Status (2026-06-02): Pi-hole DHCP is currently DISABLED — the router serves DHCP.**
+> This is deliberate: when the server went down, having Pi-hole as the only DHCP server took
+> down connectivity for *every* device on the LAN. DHCP was moved back to the router so an
+> outage no longer breaks the whole network. Trade-off: devices that get their IP automatically
+> use the **router** as DNS (192.168.1.1), so they bypass Pi-hole ad-blocking unless their DNS
+> is set to `192.168.1.10` manually. Plan: once the wired-Ethernet box (`enp0s25`) has proven
+> stable, re-enable Pi-hole DHCP using the steps below and disable the router's DHCP again.
+>
+> Live state to verify: `docker exec pihole pihole-FTL --config dhcp.active` (currently `false`).
+
+The original rationale was that the router doesn't allow changing the DNS it advertises, so
+Pi-hole acted as DHCP server to push itself as the network DNS. Steps to re-enable that setup:
 
 ### Steps
 
@@ -312,6 +323,15 @@ Forward only one port:
 | External Port | Protocol | Internal IP | Internal Port |
 |---------------|----------|-------------|---------------|
 | 51820 | UDP | 192.168.1.10 | 51820 |
+
+> **Gotcha — port-forward bound to MAC (2026-06-02):** if this rule (or a DHCP reservation
+> for `192.168.1.10`) is tied to a *device/MAC* rather than a plain IP, swapping the NIC breaks
+> it silently. The WiFi→Ethernet migration changed the MAC to **`90:1b:0e:69:36:9f`** (`enp0s25`),
+> and WireGuard stopped receiving any inbound packets (`wg show` showed `endpoint = (none)`,
+> `transfer = 0`) until the router rule was re-pointed to the new MAC. To isolate router-vs-server,
+> test the client with `Endpoint = 192.168.1.10:51820` (LAN, bypasses the router): if that works
+> but the public endpoint doesn't, the router forward is the problem. A healthy hairpin shows the
+> peer `endpoint` as the router's LAN IP (`192.168.1.1:<port>`).
 
 ### Security
 

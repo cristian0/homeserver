@@ -14,7 +14,7 @@ Personal self-hosted infrastructure running on Fujitsu Q916 mini PC with Debian.
 |---------|------|---------|
 | Dashboard | 80 | Service overview |
 | Home Assistant | 8123 | Home automation |
-| Pi-hole | 8080 | DNS/DHCP + Ad blocking |
+| Pi-hole | 8080 | DNS + Ad blocking |
 | WireGuard | 51820/UDP | VPN server |
 | WireGuard Admin | 51821 | VPN client management |
 | KOReader Sync | 7200 | Reading progress sync (Kindle/Mac) |
@@ -24,7 +24,7 @@ Personal self-hosted infrastructure running on Fujitsu Q916 mini PC with Debian.
 ## Architecture
 
 - **Security**: Only WireGuard port (51820/UDP) exposed to internet
-- **DNS/DHCP**: Pi-hole serves as network DNS and DHCP server
+- **DNS**: Pi-hole serves as network DNS (ad-blocking). **DHCP is currently handled by the router**, not Pi-hole — see the note in §9 of the docs. Devices only use Pi-hole if their DNS is set to `192.168.1.10` (manually or via the router's DHCP-advertised DNS).
 - **Remote Access**: All services accessible via VPN only
 - **Physical link**: Wired **Ethernet** (`enp0s25`, static `192.168.1.10`). The USB WiFi dongle was retired after causing recurring network drops that left the box unreachable until a physical reboot — see [FREEZE-INVESTIGATION.md](FREEZE-INVESTIGATION.md). WiFi stays configured but with `autoconnect=no` as an emergency-only fallback.
 - **Networking**: Pi-hole, WireGuard, and Music Assistant use host networking for proper client IP visibility and player discovery
@@ -134,7 +134,7 @@ See [home-server-documentation.md](home-server-documentation.md) for detailed se
 
 ## Notes
 
-- Pi-hole acts as DHCP server (router DHCP disabled)
+- DHCP is currently served by the **router** (Pi-hole DHCP disabled) — deliberate resilience choice so a server outage doesn't take down LAN connectivity; revisit once the wired-Ethernet box proves stable (see §9 of the docs)
 - IP forwarding enabled for VPN routing
 - WireGuard auto-configures NAT via `WG_POST_UP`/`WG_POST_DOWN` environment variables
 - All containers auto-restart unless stopped manually
