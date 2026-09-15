@@ -24,6 +24,7 @@
 | KOReader Sync | 7200 | http://192.168.1.10:7200 |
 | Beszel | 8090 | http://192.168.1.10:8090 |
 | Music Assistant | 8095 | http://192.168.1.10:8095 |
+| Coach Ginnastica | 8098 | http://192.168.1.10:8098 |
 
 ---
 
@@ -204,6 +205,7 @@ mkdir -p /srv/docker/koreader-sync/data/redis
 mkdir -p /srv/docker/beszel/data
 mkdir -p /srv/docker/beszel/socket
 mkdir -p /srv/docker/music-assistant/data
+mkdir -p /srv/docker/coach/data
 sudo chown -R $USER:$USER /srv/docker
 ```
 
@@ -605,7 +607,67 @@ docker compose restart music-assistant
 
 ---
 
-## 16. Accessing Services
+## 16. Coach Ginnastica
+
+Coach Ginnastica è un'applicazione Flask locale, custom (nessuna immagine pubblica), per seguire le sessioni di ginnastica di una singola persona o di una piccola rete domestica affidabile. A differenza degli altri servizi, l'immagine viene **costruita da sorgente** a partire dal Dockerfile incluso nella directory `coach/` del repository.
+
+> **Attenzione:** l'applicazione non ha autenticazione. Chiunque sulla LAN (o connesso via VPN) può leggere o modificare i dati. La porta 8098 non deve mai essere esposta su Internet né inoltrata dal router.
+
+### Directory Setup
+
+```bash
+mkdir -p /srv/docker/coach/data
+```
+
+### Docker Compose Configuration
+
+See Section 6 for the complete docker-compose.yml. Key points:
+- `build: context: ./coach` builds the image from the Dockerfile in the repository (no `image:` pull)
+- `APP_UID`/`APP_GID` build args match the container's user to the host user so it can write to the bind-mounted `data/` directory (default `1000:1000` if unset)
+- Web UI and healthcheck on container port 8080, published on host port 8098
+- SQLite database (`coach.db`) and the session secret (`app-secret`) live in `./coach/data`, which is git-ignored — back it up like any other service data directory
+
+### Initial Setup
+
+1. Build and start the service:
+
+```bash
+cd /srv/docker
+APP_UID="$(id -u)" APP_GID="$(id -g)" docker compose up -d --build coach
+```
+
+2. Access the web UI: http://192.168.1.10:8098
+
+The app creates `coach.db` and `app-secret` in `./coach/data` automatically on first run if they are not already present.
+
+### Troubleshooting
+
+#### Check logs
+
+```bash
+docker compose logs coach --tail 50
+```
+
+#### Restart service
+
+```bash
+docker compose restart coach
+```
+
+#### Rebuild after updating the app source
+
+```bash
+cd /srv/docker
+APP_UID="$(id -u)" APP_GID="$(id -g)" docker compose up -d --build coach
+```
+
+#### Permission denied on `data/`
+
+Make sure the service was started with `APP_UID`/`APP_GID` matching the host user that owns `/srv/docker/coach/data`.
+
+---
+
+## 17. Accessing Services
 
 ### From Local Network
 
@@ -618,6 +680,7 @@ docker compose restart music-assistant
 | KOReader Sync | http://192.168.1.10:7200 |
 | Beszel | http://192.168.1.10:8090 |
 | Music Assistant | http://192.168.1.10:8095 |
+| Coach Ginnastica | http://192.168.1.10:8098 |
 
 ### From Outside (VPN Required)
 
@@ -628,7 +691,7 @@ docker compose restart music-assistant
 
 ---
 
-## 17. Maintenance Commands
+## 18. Maintenance Commands
 
 ### View running containers
 
@@ -666,7 +729,7 @@ All services will restart automatically (restart: unless-stopped).
 
 ---
 
-## 18. Troubleshooting
+## 19. Troubleshooting
 
 ### VPN connected but no internet
 
@@ -743,7 +806,7 @@ is off, and kernel crashes are captured via pstore (`/var/lib/systemd/pstore/`).
 
 ---
 
-## 19. File Structure Summary
+## 20. File Structure Summary
 
 ```
 /srv/docker/
@@ -766,8 +829,11 @@ is off, and kernel crashes are captured via pstore (`/var/lib/systemd/pstore/`).
 ├── beszel/                       # Beszel monitoring
 │   ├── data/                     # Hub database
 │   └── socket/                   # Hub-agent unix socket
-└── music-assistant/              # Music Assistant
-    └── data/                     # Server data and config
+├── music-assistant/              # Music Assistant
+│   └── data/                     # Server data and config
+└── coach/                        # Coach Ginnastica (built from source)
+    ├── app/, seed/, wsgi.py, Dockerfile, requirements.txt
+    └── data/                     # SQLite DB and session secret
 ```
 
 ---

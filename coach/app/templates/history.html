@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Storico · Coach ginnastica{% endblock %}
+{% block content %}
+<h1>Storico delle sessioni</h1>
+<ol class="history-list">
+  {% for session in sessions %}
+    <li>
+      <h2><a href="{{ url_for('main.session_detail', session_id=session.id) }}">Giornata {{ session.sequence_number }} · {{ session.title }}</a></h2>
+      <p>Stato: {{ session.status_label }}</p>
+      <p>{{ session.type }} · {{ session.estimated_minutes }} minuti · Importata il {{ session.imported_at }}</p>
+    </li>
+  {% else %}<li>Nessuna sessione nello storico.</li>{% endfor %}
+</ol>
+{% endblock %}

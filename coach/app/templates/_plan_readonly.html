@@ -1,0 +1,22 @@
+<section class="saved-plan">
+  <h2>Scheda completa</h2>
+  {% if plan.session_notes %}
+    <h3>Indicazioni</h3>
+    <ul>{% for note in plan.session_notes %}<li>{{ note }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% for section in plan.sections %}
+    <section class="exercise-section">
+      <h3>{{ section.title }}</h3>
+      <ol>{% for item in section['items'] %}
+        <li>
+          <h4>{{ item.name }}</h4>
+          <p><strong>Dose:</strong> {{ item.dose }}</p>
+          <p><strong>Tecnica:</strong> {{ item.cue }}</p>
+          {% if item.video_url %}<p><a href="{{ item.video_url }}" target="_blank" rel="noopener noreferrer">{{ item.video_label or 'Apri il video' }}</a></p>{% endif %}
+          {% if item.alternate_video_url %}<p><a href="{{ item.alternate_video_url }}" target="_blank" rel="noopener noreferrer">Video alternativo</a></p>{% endif %}
+          {% if item.video_note %}<p>{{ item.video_note }}</p>{% endif %}
+        </li>
+      {% endfor %}</ol>
+    </section>
+  {% else %}<p>Giornata di riposo senza esercizi.</p>{% endfor %}
+</section>

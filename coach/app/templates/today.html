@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Oggi · Coach ginnastica{% endblock %}
+{% block content %}
+  {% if error_message %}<p class="form-error" role="alert">{{ error_message }}</p>{% endif %}
+  {% if session is none %}
+    <section class="empty-state">
+      <h1>Nessuna scheda corrente</h1>
+      <p>Quando il coach ti fornisce una nuova scheda, puoi importarla qui.</p>
+      <a class="button" href="/import">Importa scheda</a>
+    </section>
+  {% else %}
+    <article class="today" data-session-id="{{ session.id }}" data-completion-enabled="{{ 'true' if session.status == 'planned' and not session.pre_operational and not session.is_empty_rest else 'false' }}">
+      <header>
+        <p>Giornata {{ session.sequence_number }}</p>
+        <h1>{{ session.title }}</h1>
+        <p>{{ session.type }} · {{ session.estimated_minutes }} minuti</p>
+        <p>Importata il {{ session.imported_at }}</p>
+        {% if session.started_at %}<p>Attività iniziata il {{ session.started_at }}</p>{% endif %}
+      </header>
+
+      {% if session.pre_operational %}
+        <section class="pre-operational" role="status">
+          <h2>Piano pre-operativo</h2>
+          <p>Non iniziare finché non sono stati verificati diario pressorio, risposta del medico e assenza di dolore o nuovi sintomi neurologici quel giorno.</p>
+        </section>
+      {% endif %}
+
+      {% if session.notes %}
+        <section aria-labelledby="note-title">
+          <h2 id="note-title">Indicazioni</h2>
+          <ul>{% for note in session.notes %}<li>{{ note }}</li>{% endfor %}</ul>
+        </section>
+      {% endif %}
+
+      <section class="semaphore" aria-labelledby="semaforo-title">
+        <h2 id="semaforo-title">Semaforo di sicurezza</h2>
+        <p><strong>Verde:</strong> nessun sintomo alla gamba; eventuale fastidio lombare lieve; ritorno al livello abituale entro il mattino seguente.</p>
+        <p><strong>Giallo:</strong> fastidio locale più evidente o rigidità ancora presente il giorno dopo; non aumentare e attendere la valutazione del coach.</p>
+        <p><strong>Rosso:</strong> dolore crescente o irradiato, formicolio, intorpidimento, debolezza, alterazione del passo, capogiri, dolore al petto o fiato insolito; interrompere l’attività e seguire le indicazioni mediche appropriate alla gravità.</p>
+      </section>
+
+      {% if session.is_empty_rest %}
+        <section class="rest-action">
+          <h2>Giornata di riposo</h2>
+          <form method="post" action="{{ url_for('main.mark_rest', session_id=session.id) }}" data-confirm="Registra la giornata di riposo?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="confirm" value="yes">
+            <button type="submit" {% if session.pre_operational or session.status != 'planned' %}disabled{% endif %}>Registra la giornata</button>
+          </form>
+        </section>
+      {% else %}
+        <section class="progress-section" aria-live="polite">
+          <h2>Avanzamento</h2>
+          <p><span data-progress-text>{{ session.completion|length }} di {{ session.total }} completati</span></p>
+          <progress data-progress value="{{ session.completion|length }}" max="{{ session.total }}">{{ session.completion|length }} di {{ session.total }}</progress>
+          {% if session.status == 'planned' and not session.pre_operational %}
+            <form method="post" action="{{ url_for('main.reset_completion_route', session_id=session.id) }}" data-confirm="Azzerare tutte le spunte?">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="confirm" value="yes">
+              <button type="submit">Azzera le spunte</button>
+            </form>
+          {% endif %}
+        </section>
+
+        <p class="form-error" data-completion-error role="alert" hidden></p>
+        {% for section in session.sections %}
+          <section class="exercise-section">
+            <h2>{{ section.title }}</h2>
+            <ol>
+                {% for item in section["items"] %}
+                <li class="exercise-item">
+                  <label>
+                    <input type="checkbox" value="{{ item.id }}" {% if item.id in session.completion %}checked{% endif %} {% if session.status != 'planned' or session.pre_operational %}disabled{% endif %}>
+                    <span>{{ item.name }}</span>
+                  </label>
+                  <p><strong>Dose:</strong> {{ item.dose }}</p>
+                  <p><strong>Tecnica:</strong> {{ item.cue }}</p>
+                  {% if item.embed_url %}
+                    <button type="button" class="video-toggle" data-video-embed="{{ item.embed_url }}" aria-expanded="false">{{ item.video_label or 'Guarda il video' }}</button>
+                  {% endif %}
+                  {% if item.video_url %}<a href="{{ item.video_url }}" target="_blank" rel="noopener noreferrer">Apri il video</a>{% endif %}
+                  {% if item.alternate_video_url %}<a href="{{ item.alternate_video_url }}" target="_blank" rel="noopener noreferrer">Video alternativo</a>{% endif %}
+                  {% if item.video_note %}<p class="video-note">{{ item.video_note }}</p>{% endif %}
+                </li>
+              {% endfor %}
+            </ol>
+          </section>
+        {% endfor %}
+      {% endif %}
+
+      {% if not session.pre_operational and session.status == 'planned' %}
+        <p><a class="button" href="/sessions/{{ session.id }}/feedback/immediate">Inserisci feedback immediato</a></p>
+      {% elif not session.pre_operational and session.status == 'immediate_done' %}
+        <p><a class="button" href="/sessions/{{ session.id }}/feedback/immediate">Correggi feedback immediato</a></p>
+        <p><a class="button" href="/sessions/{{ session.id }}/feedback/next-morning">Inserisci feedback del mattino successivo</a></p>
+      {% endif %}
+    </article>
+  {% endif %}
+{% endblock %}

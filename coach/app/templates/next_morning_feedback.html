@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Mattino successivo · Coach ginnastica{% endblock %}
+{% block content %}
+<h1>Feedback del mattino successivo</h1>
+<p>{{ session.title }}</p>
+{% include '_semaphore.html' %}
+<p>Puoi correggere entrambi i feedback fino alla finalizzazione.</p>
+<form method="post" data-feedback-form>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% include '_feedback_fields.html' %}
+  <button type="submit">Salva feedback del mattino</button>
+</form>
+<p><a href="{{ url_for('main.session_detail', session_id=session.id) }}">Riepilogo della sessione</a></p>
+{% endblock %}

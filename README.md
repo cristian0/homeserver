@@ -20,6 +20,7 @@ Personal self-hosted infrastructure running on Fujitsu Q916 mini PC with Debian.
 | KOReader Sync | 7200 | Reading progress sync (Kindle/Mac) |
 | Beszel | 8090 | Server monitoring |
 | Music Assistant | 8095 | Music streaming & player management |
+| Coach Ginnastica | 8098 | Gymnastics coaching sessions (custom-built app) |
 
 ## Architecture
 
@@ -90,6 +91,12 @@ VPN: http://192.168.1.10 (connect to VPN first)
 **Features**: Music streaming, multi-room audio, player discovery via mDNS/uPnP
 **Access**: Local network or VPN
 
+### Coach Ginnastica
+
+**URL**: http://192.168.1.10:8098
+**Features**: Tracking gymnastics coaching sessions for a single user/household
+**Access**: Local network or VPN — no authentication, never expose to the internet
+
 ## File Structure
 
 ```
@@ -104,8 +111,10 @@ VPN: http://192.168.1.10 (connect to VPN first)
 ├── beszel/                 # Beszel data (git-ignored)
 │   ├── data/               # Hub database
 │   └── socket/             # Unix socket for hub-agent communication
-└── music-assistant/        # Music Assistant data (git-ignored)
-    └── data/               # Server data and config
+├── music-assistant/        # Music Assistant data (git-ignored)
+│   └── data/               # Server data and config
+└── coach/                  # Coach Ginnastica (built from source, not pulled)
+    └── data/               # SQLite DB + session secret (git-ignored)
 ```
 
 ## Repository Setup

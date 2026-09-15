@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Feedback immediato · Coach ginnastica{% endblock %}
+{% block content %}
+<h1>Feedback immediato</h1>
+<p>{{ session.title }}</p>
+{% include '_semaphore.html' %}
+<p>Salvando il feedback, le spunte diventano definitive e gli esercizi non spuntati sono considerati saltati. Puoi correggere i feedback fino alla finalizzazione.</p>
+<form method="post" data-feedback-form>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% include '_feedback_fields.html' %}
+  <button type="submit">Salva feedback immediato</button>
+</form>
+<p><a href="{{ url_for('main.session_detail', session_id=session.id) }}">Riepilogo della sessione</a></p>
+{% endblock %}

@@ -109,3 +109,28 @@ services:
       TZ: Europe/Rome
       LOG_LEVEL: info
 
+  coach:
+    container_name: coach
+    build:
+      context: ./coach
+      args:
+        APP_UID: ${APP_UID:-1000}
+        APP_GID: ${APP_GID:-1000}
+    restart: unless-stopped
+    ports:
+      - "8098:8080"
+    volumes:
+      - ./coach/data:/app/data
+    environment:
+      TZ: Europe/Rome
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3).read()
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
