@@ -24,10 +24,13 @@
 | KOReader Sync | 7200 | http://192.168.1.10:7200 |
 | Beszel | 8090 | http://192.168.1.10:8090 |
 | Music Assistant | 8095 | http://192.168.1.10:8095 |
+| Coach Ginnastica | 8098 | http://192.168.1.10:8098 |
 
 ---
 
 ## 1. WiFi Driver Setup (RTL8188FTV)
+
+> **Note (2026-05-29):** The server now runs on **wired Ethernet** (`enp0s25`, static `192.168.1.10`) as its primary and only active connection. The USB WiFi adapter below caused recurring network drops that left the box unreachable until a physical reboot — see [FREEZE-INVESTIGATION.md](FREEZE-INVESTIGATION.md). The WiFi profile is kept for reference / emergency fallback only (`connection.autoconnect=no`); re-enable manually with `nmcli connection up pertugio` if ever needed.
 
 The USB WiFi adapter uses chipset **Realtek RTL8188FTV** (USB ID: `0bda:f179`). The driver was already bundled in Debian.
 
@@ -202,6 +205,7 @@ mkdir -p /srv/docker/koreader-sync/data/redis
 mkdir -p /srv/docker/beszel/data
 mkdir -p /srv/docker/beszel/socket
 mkdir -p /srv/docker/music-assistant/data
+mkdir -p /srv/docker/coach/data
 sudo chown -R $USER:$USER /srv/docker
 ```
 
@@ -279,7 +283,18 @@ docker compose logs -f
 
 ## 9. Pi-hole DHCP Configuration
 
-Since the router doesn't allow changing DNS settings, Pi-hole acts as DHCP server.
+> **Status (2026-06-02): Pi-hole DHCP is currently DISABLED — the router serves DHCP.**
+> This is deliberate: when the server went down, having Pi-hole as the only DHCP server took
+> down connectivity for *every* device on the LAN. DHCP was moved back to the router so an
+> outage no longer breaks the whole network. Trade-off: devices that get their IP automatically
+> use the **router** as DNS (192.168.1.1), so they bypass Pi-hole ad-blocking unless their DNS
+> is set to `192.168.1.10` manually. Plan: once the wired-Ethernet box (`enp0s25`) has proven
+> stable, re-enable Pi-hole DHCP using the steps below and disable the router's DHCP again.
+>
+> Live state to verify: `docker exec pihole pihole-FTL --config dhcp.active` (currently `false`).
+
+The original rationale was that the router doesn't allow changing the DNS it advertises, so
+Pi-hole acted as DHCP server to push itself as the network DNS. Steps to re-enable that setup:
 
 ### Steps
 
@@ -310,6 +325,15 @@ Forward only one port:
 | External Port | Protocol | Internal IP | Internal Port |
 |---------------|----------|-------------|---------------|
 | 51820 | UDP | 192.168.1.10 | 51820 |
+
+> **Gotcha — port-forward bound to MAC (2026-06-02):** if this rule (or a DHCP reservation
+> for `192.168.1.10`) is tied to a *device/MAC* rather than a plain IP, swapping the NIC breaks
+> it silently. The WiFi→Ethernet migration changed the MAC to **`90:1b:0e:69:36:9f`** (`enp0s25`),
+> and WireGuard stopped receiving any inbound packets (`wg show` showed `endpoint = (none)`,
+> `transfer = 0`) until the router rule was re-pointed to the new MAC. To isolate router-vs-server,
+> test the client with `Endpoint = 192.168.1.10:51820` (LAN, bypasses the router): if that works
+> but the public endpoint doesn't, the router forward is the problem. A healthy hairpin shows the
+> peer `endpoint` as the router's LAN IP (`192.168.1.1:<port>`).
 
 ### Security
 
@@ -583,7 +607,67 @@ docker compose restart music-assistant
 
 ---
 
-## 16. Accessing Services
+## 16. Coach Ginnastica
+
+Coach Ginnastica è un'applicazione Flask locale, custom (nessuna immagine pubblica), per seguire le sessioni di ginnastica di una singola persona o di una piccola rete domestica affidabile. A differenza degli altri servizi, l'immagine viene **costruita da sorgente** a partire dal Dockerfile incluso nella directory `coach/` del repository.
+
+> **Attenzione:** l'applicazione non ha autenticazione. Chiunque sulla LAN (o connesso via VPN) può leggere o modificare i dati. La porta 8098 non deve mai essere esposta su Internet né inoltrata dal router.
+
+### Directory Setup
+
+```bash
+mkdir -p /srv/docker/coach/data
+```
+
+### Docker Compose Configuration
+
+See Section 6 for the complete docker-compose.yml. Key points:
+- `build: context: ./coach` builds the image from the Dockerfile in the repository (no `image:` pull)
+- `APP_UID`/`APP_GID` build args match the container's user to the host user so it can write to the bind-mounted `data/` directory (default `1000:1000` if unset)
+- Web UI and healthcheck on container port 8080, published on host port 8098
+- SQLite database (`coach.db`) and the session secret (`app-secret`) live in `./coach/data`, which is git-ignored — back it up like any other service data directory
+
+### Initial Setup
+
+1. Build and start the service:
+
+```bash
+cd /srv/docker
+APP_UID="$(id -u)" APP_GID="$(id -g)" docker compose up -d --build coach
+```
+
+2. Access the web UI: http://192.168.1.10:8098
+
+The app creates `coach.db` and `app-secret` in `./coach/data` automatically on first run if they are not already present.
+
+### Troubleshooting
+
+#### Check logs
+
+```bash
+docker compose logs coach --tail 50
+```
+
+#### Restart service
+
+```bash
+docker compose restart coach
+```
+
+#### Rebuild after updating the app source
+
+```bash
+cd /srv/docker
+APP_UID="$(id -u)" APP_GID="$(id -g)" docker compose up -d --build coach
+```
+
+#### Permission denied on `data/`
+
+Make sure the service was started with `APP_UID`/`APP_GID` matching the host user that owns `/srv/docker/coach/data`.
+
+---
+
+## 17. Accessing Services
 
 ### From Local Network
 
@@ -596,6 +680,7 @@ docker compose restart music-assistant
 | KOReader Sync | http://192.168.1.10:7200 |
 | Beszel | http://192.168.1.10:8090 |
 | Music Assistant | http://192.168.1.10:8095 |
+| Coach Ginnastica | http://192.168.1.10:8098 |
 
 ### From Outside (VPN Required)
 
@@ -606,7 +691,7 @@ docker compose restart music-assistant
 
 ---
 
-## 17. Maintenance Commands
+## 18. Maintenance Commands
 
 ### View running containers
 
@@ -634,6 +719,28 @@ docker compose pull
 docker compose up -d
 ```
 
+### Deploy Repository Changes
+
+The server (host `mulo`, alias in `~/.ssh/config`, `192.168.1.10`) has a clone of this repository at `/srv/docker`, checked out on `main`. Any change made locally (docker-compose.yml, dashboard, docs, source of a custom-built service, etc.) must be pushed and then pulled on the server to take effect:
+
+```bash
+# 1. on the dev machine: commit and push
+git push origin main
+
+# 2. on mulo: pull and apply
+ssh mulo 'cd /srv/docker && git pull && docker compose restart <service>'
+```
+
+For a service whose image is **built from source** in this repo (currently only `coach`, see Section 16) rather than pulled from a registry, use `up -d --build` instead of `restart` so the image is rebuilt from the new source, and pass the host UID/GID so the container can write to its bind-mounted `data/`:
+
+```bash
+ssh mulo 'cd /srv/docker && git pull && APP_UID="$(id -u)" APP_GID="$(id -g)" docker compose up -d --build <service>'
+```
+
+If the change affects multiple/all services, drop the service name (`docker compose restart` / `docker compose up -d --build` with no argument) to apply it to all of them.
+
+**Before pulling**, check for local uncommitted changes on the server (`ssh mulo 'cd /srv/docker && git status'`) — some directories (e.g. `homeassistant/`) can accumulate runtime edits made through a service's own UI. `git pull` only fails/conflicts if the incoming commits touch the same file; otherwise the local edit is simply left uncommitted.
+
 ### Reboot server
 
 ```bash
@@ -644,7 +751,7 @@ All services will restart automatically (restart: unless-stopped).
 
 ---
 
-## 18. Troubleshooting
+## 19. Troubleshooting
 
 ### VPN connected but no internet
 
@@ -711,9 +818,17 @@ Restart service:
 docker compose restart koreader-sync
 ```
 
+### Server randomly freezes / unreachable on all ports
+
+If the whole server becomes unreachable (SSH and every Docker service) and only a physical
+reboot recovers it, see **[FREEZE-INVESTIGATION.md](FREEZE-INVESTIGATION.md)**. Root causes were
+a Haswell deep C-state hang and a flaky USB WiFi link. Mitigations in place: a hardware watchdog
+auto-recovers true hangs, deep C-states are disabled (`intel_idle.max_cstate=1`), WiFi power-save
+is off, and kernel crashes are captured via pstore (`/var/lib/systemd/pstore/`).
+
 ---
 
-## 19. File Structure Summary
+## 20. File Structure Summary
 
 ```
 /srv/docker/
@@ -736,8 +851,11 @@ docker compose restart koreader-sync
 ├── beszel/                       # Beszel monitoring
 │   ├── data/                     # Hub database
 │   └── socket/                   # Hub-agent unix socket
-└── music-assistant/              # Music Assistant
-    └── data/                     # Server data and config
+├── music-assistant/              # Music Assistant
+│   └── data/                     # Server data and config
+└── coach/                        # Coach Ginnastica (built from source)
+    ├── app/, seed/, wsgi.py, Dockerfile, requirements.txt
+    └── data/                     # SQLite DB and session secret
 ```
 
 ---

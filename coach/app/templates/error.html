@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Errore {{ status }} · Coach ginnastica{% endblock %}
+{% block content %}
+<section>
+  <h1>Operazione non riuscita</h1>
+  <p class="form-error" role="alert">{{ error_message }}</p>
+  {% if request_id %}<p>Riferimento: {{ request_id }}</p>{% endif %}
+  <p><a href="{{ url_for('main.today') }}">Torna a Oggi</a></p>
+</section>
+{% endblock %}

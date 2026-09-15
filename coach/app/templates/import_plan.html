@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Importa scheda · Coach ginnastica{% endblock %}
+{% block content %}
+<h1>Importa scheda</h1>
+<p>Incolla il JSON fornito dal coach, anche nel blocco racchiuso da tre apici inversi con etichetta json. Il blocco JSON può occupare al massimo 64 KiB.</p>
+<form method="post" action="{{ url_for('main.import_preview') }}" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="form-field">
+    <label for="raw-plan">Scheda JSON del coach</label>
+    {% if errors %}<ul id="plan-errors" class="form-error" role="alert">{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+    <textarea id="raw-plan" name="raw_plan" rows="20" required spellcheck="false" {% if errors %}aria-invalid="true" aria-describedby="plan-errors"{% endif %}>{{ raw_plan }}</textarea>
+  </div>
+  <button type="submit">Mostra anteprima</button>
+</form>
+{% endblock %}

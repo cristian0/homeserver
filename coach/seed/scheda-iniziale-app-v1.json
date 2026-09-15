@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "session_id": "sessione-001",
+  "sequence_number": 1,
+  "title": "Prima seduta di calibrazione",
+  "activity_type": "complete",
+  "estimated_minutes": 15,
+  "pre_operational": true,
+  "session_notes": [
+    "Un solo giro.",
+    "Nessun secondo giro nelle prime due sedute complete.",
+    "Lascia almeno 48 ore prima della seconda seduta completa.",
+    "Recupera liberamente tra gli esercizi.",
+    "Mantieni la fatica complessiva intorno a 3/10.",
+    "Respira sempre: non trattenere il fiato."
+  ],
+  "sections": [
+    {
+      "title": "Riscaldamento",
+      "items": [
+        {
+          "id": "marcia-facile",
+          "name": "Marcia facile sul posto",
+          "dose": "60–90 secondi",
+          "cue": "Ginocchia basse, ritmo comodo e respirazione libera.",
+          "video_url": "https://www.youtube.com/watch?v=u1gmWFvEluM",
+          "video_label": "Guarda il video"
+        },
+        {
+          "id": "circonduzioni-spalle",
+          "name": "Circonduzioni delle spalle",
+          "dose": "6 avanti e 6 indietro",
+          "cue": "Movimento morbido, senza sollevare le spalle verso le orecchie.",
+          "video_url": "https://www.youtube.com/watch?v=w8yCm_sFUo4",
+          "video_label": "Guarda il video"
+        },
+        {
+          "id": "reset-parete",
+          "name": "Reset posturale alla parete",
+          "dose": "3 respiri tranquilli",
+          "cue": "Usa la parete come riferimento leggero e non schiacciare la curva lombare.",
+          "video_url": "https://www.youtube.com/watch?v=N3e47z3uYvs",
+          "video_label": "Video di riferimento",
+          "video_note": "Il video mostra la neutralità senza parete; nella scheda la parete è soltanto un riferimento leggero."
+        }
+      ]
+    },
+    {
+      "title": "Forza e controllo — un solo giro",
+      "items": [
+        {
+          "id": "alzata-sedia",
+          "name": "Alzata dalla sedia",
+          "dose": "6 ripetizioni",
+          "cue": "Espira mentre sali e torna a sederti lentamente e con controllo.",
+          "video_url": "https://www.youtube.com/watch?v=Dg20pIkkzh8",
+          "video_label": "Guarda il video"
+        },
+        {
+          "id": "piegamento-muro",
+          "name": "Piegamento al muro",
+          "dose": "6 ripetizioni",
+          "cue": "Mantieni il corpo in linea, controlla i gomiti e non trattenere il fiato.",
+          "video_url": "https://www.youtube.com/watch?v=wIPJvBQs7RA",
+          "video_label": "Guarda il video"
+        },
+        {
+          "id": "ponte-glutei",
+          "name": "Ponte dei glutei",
+          "dose": "6 ripetizioni",
+          "cue": "Sali solo finché lavorano i glutei e fermati prima di inarcare la zona lombare.",
+          "video_url": "https://www.youtube.com/watch?v=PhTDzR0TpZs",
+          "video_label": "Guarda il video"
+        },
+        {
+          "id": "bird-dog-piede-terra",
+          "name": "Preparazione al bird-dog con piede a terra",
+          "dose": "4 per lato",
+          "cue": "Il piede scivola sul pavimento e non si solleva; busto e bacino restano fermi.",
+          "video_url": "https://www.functionalmovement.com/exercises/925/bird_dog_-_leg_slide",
+          "video_label": "Dimostrazione esatta",
+          "alternate_video_url": "https://www.youtube.com/watch?v=_ShOQoFq84s",
+          "video_note": "Il video YouTube alternativo mostra una variante più difficile: osserva l'assetto ma non sollevare il piede."
+        },
+        {
+          "id": "sollevamento-polpacci",
+          "name": "Sollevamento sui polpacci",
+          "dose": "8 ripetizioni",
+          "cue": "Usa una sedia per equilibrio e sali e scendi senza rimbalzo.",
+          "video_url": "https://www.youtube.com/watch?v=B2k54wjKZe8",
+          "video_label": "Guarda il video",
+          "video_note": "Nel video esegui soltanto la variante iniziale a due gambe."
+        }
+      ]
+    },
+    {
+      "title": "Mobilità finale",
+      "items": [
+        {
+          "id": "open-book",
+          "name": "Open book",
+          "dose": "3 per lato",
+          "cue": "Tieni ferme le ginocchia e ruota lentamente solo fin dove è comodo.",
+          "video_url": "https://www.youtube.com/watch?v=xznlno1QVuU",
+          "video_label": "Guarda il video",
+          "video_note": "Il cuscino mostrato sotto il ginocchio superiore è facoltativo e serve a tenere fermo il bacino."
+        },
+        {
+          "id": "flessore-anca",
+          "name": "Flessore dell’anca in mezzo inginocchio",
+          "dose": "15 secondi per lato",
+          "cue": "Attiva appena addome e gluteo della gamba arretrata e avanza poco il bacino, senza inarcare la schiena; usa una sedia per equilibrio se serve.",
+          "video_url": "https://www.youtube.com/watch?v=34SlL-PPCWQ",
+          "video_label": "Guarda il video"
+        },
+        {
+          "id": "mobilita-coscia-posteriore",
+          "name": "Mobilità posteriore della coscia",
+          "dose": "4 per lato",
+          "cue": "Estendi il ginocchio solo parzialmente e fermati alla prima lieve resistenza, senza spingere.",
+          "video_url": "https://www.youtube.com/watch?v=zJc1zb1RiDQ",
+          "video_label": "Guarda il video"
+        }
+      ]
+    }
+  ]
+}

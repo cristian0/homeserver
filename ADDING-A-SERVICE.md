@@ -105,8 +105,8 @@ If neither option works, ask before proceeding.
    - Reference to docker-compose.yml (Section 6)
    - Initial setup / first-run instructions
    - Troubleshooting subsection (check logs, restart commands)
-3. Add the service directory to the **File Structure Summary** (Section 19)
-4. Add the service URL to the **Accessing Services** table (Section 16)
+3. Add the service directory to the **File Structure Summary** (Section 20)
+4. Add the service URL to the **Accessing Services** table (Section 17)
 
 ### `README.md`
 

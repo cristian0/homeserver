@@ -1,0 +1,66 @@
+{% macro error_for(name) %}
+  {% if errors.get(name) %}<p class="form-error" id="error-{{ name }}" role="alert">{{ errors[name]|join('. ') }}</p>{% endif %}
+{% endmacro %}
+{% macro error_attrs(name) %}{% if errors.get(name) %}aria-invalid="true" aria-describedby="error-{{ name }}"{% endif %}{% endmacro %}
+{% macro text_field(name, maximum) %}
+  <div class="form-field">
+    <label for="{{ name }}">{{ labels[name] }}</label>
+    <textarea id="{{ name }}" name="{{ name }}" maxlength="{{ maximum }}" rows="3" {{ error_attrs(name) }}>{{ values.get(name, '') }}</textarea>
+    {{ error_for(name) }}
+  </div>
+{% endmacro %}
+{% macro radio_field(name) %}
+  <fieldset {{ error_attrs(name) }}>
+    <legend>{{ labels[name] }} (obbligatorio)</legend>
+    {% for value, label in [('yes', 'Sì'), ('no', 'No')] %}
+      <label class="choice"><input type="radio" name="{{ name }}" value="{{ value }}" {% if values.get(name) == value %}checked{% endif %} required {{ error_attrs(name) }}> {{ label }}</label>
+    {% endfor %}
+    {{ error_for(name) }}
+  </fieldset>
+{% endmacro %}
+<fieldset>
+  <legend>Valutazioni da 0 a 10 (obbligatorie)</legend>
+  {% for name in ['lumbar_pain', 'stiffness', 'residual_fatigue' if morning else 'fatigue'] %}
+    <div class="form-field">
+      <label for="{{ name }}">{{ labels[name] }}</label>
+      <input type="number" id="{{ name }}" name="{{ name }}" min="0" max="10" step="1" inputmode="numeric" value="{{ values.get(name, '') }}" required {{ error_attrs(name) }}>
+      {{ error_for(name) }}
+    </div>
+  {% endfor %}
+</fieldset>
+{{ radio_field('leg_symptoms') }}
+<div data-leg-details>
+  <p>Se hai indicato sintomi alla gamba, descrivili qui. In caso contrario lascia vuoto.</p>
+  {{ text_field('leg_details', 500) }}
+</div>
+<fieldset>
+  <legend>Segnali gialli</legend>
+  {% for form_key, flag in yellow_form_keys.items() %}
+    {% if morning or form_key == 'yellow_local_discomfort' %}
+      <label class="choice"><input type="checkbox" name="{{ form_key }}" {% if values.get(form_key) %}checked{% endif %}> {{ yellow_labels[flag] }}</label>
+    {% endif %}
+  {% endfor %}
+</fieldset>
+<fieldset>
+  <legend>Segnali rossi</legend>
+  {% for flag, label in red_labels.items() %}
+    <label class="choice"><input type="checkbox" name="red_{{ flag }}" data-red-flag {% if values.get('red_' ~ flag) %}checked{% endif %}> {{ label }}</label>
+  {% endfor %}
+</fieldset>
+{% if morning %}
+  {{ radio_field('back_to_baseline') }}
+  {% for name, options in [('discomfort_onset', onset_labels), ('approximate_duration', duration_labels)] %}
+    <div class="form-field">
+      <label for="{{ name }}">{{ labels[name] }} (obbligatorio)</label>
+      <select id="{{ name }}" name="{{ name }}" required {{ error_attrs(name) }}>
+        <option value="">Scegli una risposta</option>
+        {% if values.get(name) and values.get(name) not in options %}<option value="{{ values[name] }}" selected>{{ values[name] }}</option>{% endif %}
+        {% for value, label in options.items() %}<option value="{{ value }}" {% if values.get(name) == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      {{ error_for(name) }}
+    </div>
+  {% endfor %}
+{% else %}
+  {{ text_field('additional_activity', 1000) }}
+{% endif %}
+{{ text_field('notes', 2000) }}

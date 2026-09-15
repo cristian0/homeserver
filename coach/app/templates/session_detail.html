@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Riepilogo sessione · Coach ginnastica{% endblock %}
+{% block content %}
+<article data-session-id="{{ session.id }}" data-completion-enabled="false">
+  <h1>{{ session.title }}</h1>
+  <p>Giornata {{ session.sequence_number }} · {{ presented.type }} · {{ session.estimated_minutes }} minuti</p>
+  <p>Identificatore: {{ session.id }} · Stato: {{ presented.status_label }}</p>
+  <p>Importata il {{ presented.imported_at }}</p>
+  {% if presented.started_at %}<p>Attività iniziata il {{ presented.started_at }}</p>{% endif %}
+  {% if presented.immediate_saved_at %}<p>Feedback immediato salvato il {{ presented.immediate_saved_at }}</p>{% endif %}
+  {% if presented.completed_at %}<p>Conclusa il {{ presented.completed_at }}</p>{% endif %}
+  {% if presented.superseded_at %}<p>Sostituita il {{ presented.superseded_at }}</p>{% endif %}
+  {% if session.plan.replaces_session_id %}<p>Sostituisce: <a href="{{ url_for('main.session_detail', session_id=session.plan.replaces_session_id) }}">{{ session.plan.replaces_session_id }}</a></p>{% endif %}
+  {% if session.superseded_by_id %}<p>Sostituita da: <a href="{{ url_for('main.session_detail', session_id=session.superseded_by_id) }}">{{ session.superseded_by_id }}</a></p>{% endif %}
+  {% if error_message %}<p class="form-error" role="alert">{{ error_message }}</p>{% endif %}
+  {% if session.status in ['complete', 'superseded'] %}<p>Sessione di sola lettura.</p>{% endif %}
+  {% if session.pre_operational %}<p class="pre-operational">Piano pre-operativo: non iniziare finché non sono stati verificati diario pressorio, risposta del medico e assenza di dolore o nuovi sintomi neurologici quel giorno.</p>{% endif %}
+  {% include '_semaphore.html' %}
+  {% with plan = session.plan %}{% include '_plan_readonly.html' %}{% endwith %}
+  {% for completed, title in [(true, 'Completati'), (false, 'Saltati')] %}
+    <section>
+      <h2>{{ title }}</h2>
+      <ul>
+        {% set count = namespace(value=0) %}
+        {% for section in session.plan.sections %}{% for item in section['items'] %}
+          {% if (item.id in session.completion) == completed %}
+            {% set count.value = count.value + 1 %}<li>{{ item.name }} — {{ item.dose }}</li>
+          {% endif %}
+        {% endfor %}{% endfor %}
+        {% if not count.value %}<li>Nessuno</li>{% endif %}
+      </ul>
+    </section>
+  {% endfor %}
+  {% for feedback, title in [(session.immediate_feedback, 'Feedback immediato'), (session.next_morning_feedback, 'Feedback del mattino successivo')] %}
+    <section>
+      <h2>{{ title }}</h2>
+      {% if feedback %}
+        <dl class="saved-feedback">
+          {% for key, value in feedback.items() %}
+            {% if key in ['yellow_flags', 'red_flags'] %}
+              <dt>{{ 'Segnali gialli' if key == 'yellow_flags' else 'Segnali rossi' }}</dt>
+              <dd>{% for flag, checked in value.items() %}{{ (yellow_labels if key == 'yellow_flags' else red_labels)[flag] }}: {{ 'sì' if checked else 'no' }}{% if not loop.last %}; {% endif %}{% endfor %}</dd>
+            {% else %}
+              <dt>{{ labels[key] }}</dt>
+              <dd>{% if value is sameas true %}sì{% elif value is sameas false %}no{% elif key == 'discomfort_onset' %}{{ onset_labels[value] }}{% elif key == 'approximate_duration' %}{{ duration_labels[value] }}{% else %}{{ value if value != '' else 'Nessuno' }}{% if key in ['lumbar_pain', 'stiffness', 'fatigue', 'residual_fatigue'] %}/10{% endif %}{% endif %}</dd>
+            {% endif %}
+          {% endfor %}
+        </dl>
+      {% else %}<p>Non ancora salvato.</p>{% endif %}
+    </section>
+  {% endfor %}
+  {% if session.status in ['planned', 'immediate_done'] and not session.pre_operational %}
+    <form method="get" action="{{ url_for('main.immediate_feedback', session_id=session.id) }}"><button type="submit" data-session-edit-control>{{ 'Correggi' if session.immediate_feedback else 'Inserisci' }} feedback immediato</button></form>
+    {% if session.status == 'immediate_done' %}<form method="get" action="{{ url_for('main.next_morning_feedback', session_id=session.id) }}"><button type="submit" data-session-edit-control>{{ 'Correggi' if session.next_morning_feedback else 'Inserisci' }} feedback del mattino successivo</button></form>{% endif %}
+  {% endif %}
+  {% if can_finalize %}
+    <p>La finalizzazione rende tutti i dati di sola lettura.</p>
+    <form method="post" action="{{ url_for('main.finalize', session_id=session.id) }}" data-finalize-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="choice">
+        <input type="checkbox" id="confirm-finalize" name="confirm" value="yes" required>
+        <label for="confirm-finalize">Confermo la finalizzazione: tutti i dati diventeranno di sola lettura.</label>
+      </div>
+      <button type="submit">Copia feedback per il coach</button>
+    </form>
+  {% endif %}
+  {% if can_finalize or session.status == 'complete' %}
+    <section>
+      <h2>Testo per il coach</h2>
+      <label for="coach-summary">Riepilogo salvato</label>
+      <textarea id="coach-summary" data-coach-summary readonly rows="18" aria-describedby="manual-copy">{{ session.coach_summary_text or '' }}</textarea>
+      <p id="manual-copy">Seleziona e copia manualmente</p>
+      <button type="button" data-copy-summary>Copia il riepilogo salvato</button>
+      <p data-copy-status role="status" aria-live="polite"></p>
+    </section>
+  {% endif %}
+</article>
+{% endblock %}
