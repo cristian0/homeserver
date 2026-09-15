@@ -59,6 +59,15 @@ docker compose pull
 docker compose up -d
 ```
 
+### Deploy local changes to the server
+
+```bash
+git push origin main
+ssh mulo 'cd /srv/docker && git pull && docker compose restart <service_name>'
+```
+
+For a service built from source in this repo (currently `coach`), use `docker compose up -d --build <service_name>` instead of `restart`. See §18 of the docs for details.
+
 ## Client Access
 
 ### Dashboard

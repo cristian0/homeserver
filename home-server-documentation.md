@@ -719,6 +719,28 @@ docker compose pull
 docker compose up -d
 ```
 
+### Deploy Repository Changes
+
+The server (host `mulo`, alias in `~/.ssh/config`, `192.168.1.10`) has a clone of this repository at `/srv/docker`, checked out on `main`. Any change made locally (docker-compose.yml, dashboard, docs, source of a custom-built service, etc.) must be pushed and then pulled on the server to take effect:
+
+```bash
+# 1. on the dev machine: commit and push
+git push origin main
+
+# 2. on mulo: pull and apply
+ssh mulo 'cd /srv/docker && git pull && docker compose restart <service>'
+```
+
+For a service whose image is **built from source** in this repo (currently only `coach`, see Section 16) rather than pulled from a registry, use `up -d --build` instead of `restart` so the image is rebuilt from the new source, and pass the host UID/GID so the container can write to its bind-mounted `data/`:
+
+```bash
+ssh mulo 'cd /srv/docker && git pull && APP_UID="$(id -u)" APP_GID="$(id -g)" docker compose up -d --build <service>'
+```
+
+If the change affects multiple/all services, drop the service name (`docker compose restart` / `docker compose up -d --build` with no argument) to apply it to all of them.
+
+**Before pulling**, check for local uncommitted changes on the server (`ssh mulo 'cd /srv/docker && git status'`) — some directories (e.g. `homeassistant/`) can accumulate runtime edits made through a service's own UI. `git pull` only fails/conflicts if the incoming commits touch the same file; otherwise the local edit is simply left uncommitted.
+
 ### Reboot server
 
 ```bash
