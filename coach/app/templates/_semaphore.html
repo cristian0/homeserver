@@ -1,8 +1,10 @@
 {% set red_message = 'dolore crescente o irradiato, formicolio, intorpidimento, debolezza, alterazione del passo, capogiri, dolore al petto o fiato insolito; interrompere l’attività e seguire le indicazioni mediche appropriate alla gravità.' %}
-<section class="semaphore" aria-labelledby="semaforo-title">
-  <h2 id="semaforo-title">Semaforo di sicurezza</h2>
-  <p><strong>Verde:</strong> nessun sintomo alla gamba; eventuale fastidio lombare lieve; ritorno al livello abituale entro il mattino seguente.</p>
-  <p><strong>Giallo:</strong> fastidio locale più evidente o rigidità ancora presente il giorno dopo; non aumentare e attendere la valutazione del coach.</p>
-  <p><strong>Rosso:</strong> {{ red_message }}</p>
-</section>
+<details class="semaphore">
+  <summary id="semaforo-title">Semaforo di sicurezza <span class="semaphore-dots" aria-hidden="true"><i class="dg"></i><i class="dy"></i><i class="dr"></i></span></summary>
+  <div class="semaphore-body">
+    <p><strong>Verde:</strong> nessun sintomo alla gamba; eventuale fastidio lombare lieve; ritorno al livello abituale entro il mattino seguente.</p>
+    <p><strong>Giallo:</strong> fastidio locale più evidente o rigidità ancora presente il giorno dopo; non aumentare e attendere la valutazione del coach.</p>
+    <p><strong>Rosso:</strong> {{ red_message }}</p>
+  </div>
+</details>
 <p class="red-warning" data-red-warning role="alert" {% if not red_selected %}hidden{% endif %}><strong>Rosso:</strong> {{ red_message }}</p>

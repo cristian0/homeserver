@@ -1,10 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Mattino successivo · Coach ginnastica{% endblock %}
 {% block content %}
-<h1>Feedback del mattino successivo</h1>
-<p>{{ session.title }}</p>
+<header class="today-head">
+  <p class="eyebrow">Giornata {{ session.sequence_number }} · {{ session.title }}</p>
+  <h1>Feedback del mattino successivo</h1>
+</header>
+<div class="info-card">
+  <span class="badge" aria-hidden="true">i</span>
+  <p>Puoi correggere entrambi i feedback fino alla finalizzazione.</p>
+</div>
 {% include '_semaphore.html' %}
-<p>Puoi correggere entrambi i feedback fino alla finalizzazione.</p>
 <form method="post" data-feedback-form>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% include '_feedback_fields.html' %}

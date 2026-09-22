@@ -2,6 +2,7 @@
 
 from datetime import datetime
 import json
+import re
 from zoneinfo import ZoneInfo
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
@@ -46,6 +47,37 @@ def _local_time(value):
     return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(ROME).strftime("%d/%m/%Y %H:%M")
 
 
+_DURATION_RE = re.compile(r"(\d+)(?:\s*[–-]\s*(\d+))?\s*(secondi|secondo|minuti|minuto)", re.IGNORECASE)
+
+
+def _timer_seconds(dose):
+    """Best-effort duration hint for the optional focus-mode timer; None when the dose is a rep count."""
+    match = _DURATION_RE.search(dose)
+    if not match:
+        return None
+    numbers = [int(match.group(1))]
+    if match.group(2):
+        numbers.append(int(match.group(2)))
+    seconds = max(numbers)
+    return seconds * 60 if match.group(3).lower().startswith("minut") else seconds
+
+
+def _current_item(session, plan, ordered_ids):
+    if session["status"] != "planned" or session["pre_operational"]:
+        return None, None, None
+    completed = set(session["completion"])
+    for index, identifier in enumerate(ordered_ids, start=1):
+        if identifier not in completed:
+            name = next(
+                item["name"]
+                for section in plan["sections"]
+                for item in section["items"]
+                if item["id"] == identifier
+            )
+            return identifier, name, index
+    return None, None, None
+
+
 def _present_session(session):
     if session is None:
         return None
@@ -56,8 +88,11 @@ def _present_session(session):
         for item in section["items"]:
             presented = dict(item)
             presented["embed_url"] = youtube_embed_url(item["video_url"]) if "video_url" in item else None
+            presented["timer_seconds"] = _timer_seconds(item["dose"])
             items.append(presented)
         sections.append({"title": section["title"], "items": items})
+    ordered_ids = plan_item_ids(plan)
+    current_item_id, current_item_name, current_item_index = _current_item(session, plan, ordered_ids)
     return {
         "id": session["id"],
         "title": session["title"],
@@ -83,6 +118,9 @@ def _present_session(session):
         "superseded_at": _local_time(session["superseded_at"]),
         "status_label": STATUS_LABELS[session["status"]],
         "is_empty_rest": session["activity_type"] == "rest" and not plan_item_ids(plan),
+        "current_item_id": current_item_id,
+        "current_item_name": current_item_name,
+        "current_item_index": current_item_index,
     }
 
 

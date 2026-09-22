@@ -1,10 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Feedback immediato · Coach ginnastica{% endblock %}
 {% block content %}
-<h1>Feedback immediato</h1>
-<p>{{ session.title }}</p>
+<header class="today-head">
+  <p class="eyebrow">Giornata {{ session.sequence_number }} · {{ session.title }}</p>
+  <h1>Feedback immediato</h1>
+</header>
+<div class="info-card">
+  <span class="badge" aria-hidden="true">i</span>
+  <p>Salvando il feedback, le spunte diventano definitive e gli esercizi non spuntati sono considerati saltati. Puoi correggere i feedback fino alla finalizzazione.</p>
+</div>
 {% include '_semaphore.html' %}
-<p>Salvando il feedback, le spunte diventano definitive e gli esercizi non spuntati sono considerati saltati. Puoi correggere i feedback fino alla finalizzazione.</p>
 <form method="post" data-feedback-form>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% include '_feedback_fields.html' %}

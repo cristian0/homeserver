@@ -11,6 +11,19 @@
     let desiredIds = new Set(confirmedIds);
     let saveInFlight = false;
 
+    // Modalità "esercizio in corso": un esercizio alla volta, per seguirlo senza distrazioni.
+    const rows = Array.from(page.querySelectorAll(".exercise-item"));
+    const rowCheckbox = (row) => row.querySelector('input[type="checkbox"]');
+    const firstUncheckedIndex = () => {
+      if (!rows.length) return -1;
+      const index = rows.findIndex((row) => !rowCheckbox(row).checked);
+      return index === -1 ? rows.length - 1 : index;
+    };
+    const highlightCurrent = () => {
+      const index = firstUncheckedIndex();
+      rows.forEach((row, i) => row.classList.toggle("is-current", i === index));
+    };
+
     const selectedIds = () => checkboxes.filter((item) => item.checked).map((item) => item.value);
     const sameSelection = (first, second) => first.size === second.size && [...first].every((item) => second.has(item));
     document.querySelectorAll('a[href^="/"], form').forEach((control) => {
@@ -73,7 +86,112 @@
       checkbox.addEventListener("change", () => {
         desiredIds = new Set(selectedIds());
         saveLatestSelection();
+        if (page.dataset.view !== "focus") highlightCurrent();
       });
+    });
+
+    const focusPosition = document.querySelector("[data-focus-position]");
+    const focusCurrentName = document.querySelector("[data-focus-current-name]");
+    let focusIndex = -1;
+
+    const renderFocus = () => {
+      rows.forEach((row, index) => row.classList.toggle("is-current", index === focusIndex));
+      if (focusPosition) focusPosition.textContent = rows.length ? `${focusIndex + 1} di ${rows.length}` : "";
+      const current = rows[focusIndex];
+      const name = current ? current.querySelector(".item-name") : null;
+      if (focusCurrentName) focusCurrentName.textContent = name ? name.textContent : "";
+    };
+
+    const enterFocus = () => {
+      if (!rows.length) return;
+      focusIndex = firstUncheckedIndex();
+      page.dataset.view = "focus";
+      document.body.dataset.focusMode = "on";
+      renderFocus();
+    };
+
+    const exitFocus = () => {
+      page.dataset.view = "list";
+      document.body.removeAttribute("data-focus-mode");
+      highlightCurrent();
+    };
+
+    const move = (delta) => {
+      if (!rows.length) return;
+      focusIndex = Math.min(Math.max(focusIndex + delta, 0), rows.length - 1);
+      renderFocus();
+    };
+
+    document.querySelectorAll("[data-focus-enter]").forEach((button) => button.addEventListener("click", enterFocus));
+    const focusExit = document.querySelector("[data-focus-exit]");
+    if (focusExit) focusExit.addEventListener("click", exitFocus);
+    const focusPrev = document.querySelector("[data-focus-prev]");
+    const focusNext = document.querySelector("[data-focus-next]");
+    if (focusPrev) focusPrev.addEventListener("click", () => move(-1));
+    if (focusNext) focusNext.addEventListener("click", () => move(1));
+
+    const focusDone = document.querySelector("[data-focus-done]");
+    if (focusDone) {
+      focusDone.addEventListener("click", () => {
+        const current = rows[focusIndex];
+        if (!current) return;
+        const checkbox = rowCheckbox(current);
+        if (checkbox && !checkbox.disabled && !checkbox.checked) {
+          checkbox.checked = true;
+          checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        move(1);
+      });
+    }
+    const focusSkip = document.querySelector("[data-focus-skip]");
+    if (focusSkip) focusSkip.addEventListener("click", () => move(1));
+
+    // Timer facoltativo e locale per le dosi a tempo: nessun dato viene salvato.
+    document.querySelectorAll("[data-timer]").forEach((timer) => {
+      const totalSeconds = parseInt(timer.dataset.timerSeconds, 10);
+      const display = timer.querySelector("[data-timer-display]");
+      const ring = timer.querySelector("[data-timer-ring]");
+      const startButton = timer.querySelector("[data-timer-start]");
+      const resetButton = timer.querySelector("[data-timer-reset]");
+      let remaining = totalSeconds;
+      let intervalId = null;
+      const format = (seconds) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+      const render = () => {
+        if (display) display.textContent = format(remaining);
+        if (ring) ring.style.setProperty("--pct", String(Math.round(((totalSeconds - remaining) / totalSeconds) * 100)));
+      };
+      const stop = () => {
+        if (intervalId !== null) { clearInterval(intervalId); intervalId = null; }
+      };
+      const tick = () => {
+        remaining -= 1;
+        render();
+        if (remaining <= 0) {
+          stop();
+          if (startButton) startButton.textContent = "Fatto";
+        }
+      };
+      if (startButton) {
+        startButton.addEventListener("click", () => {
+          if (intervalId !== null) {
+            stop();
+            startButton.textContent = "Riprendi";
+            return;
+          }
+          if (remaining <= 0) remaining = totalSeconds;
+          startButton.textContent = "Pausa";
+          intervalId = setInterval(tick, 1000);
+        });
+      }
+      if (resetButton) {
+        resetButton.addEventListener("click", () => {
+          stop();
+          remaining = totalSeconds;
+          if (startButton) startButton.textContent = "Avvia";
+          render();
+        });
+      }
+      render();
     });
   }
 

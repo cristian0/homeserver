@@ -18,8 +18,14 @@
     {{ error_for(name) }}
   </fieldset>
 {% endmacro %}
-<fieldset>
-  <legend>Valutazioni da 0 a 10 (obbligatorie)</legend>
+{% if errors %}
+  <div class="errsum" role="alert">
+    <strong>Controlla {{ errors|length }} campo{{ 'i' if errors|length != 1 else '' }}:</strong>
+    {% for name in errors %}<a href="#error-{{ name }}">{{ labels.get(name, name) }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+  </div>
+{% endif %}
+<div class="card-group">
+  <h2><span class="num">1</span>Valutazioni da 0 a 10</h2>
   {% for name in ['lumbar_pain', 'stiffness', 'residual_fatigue' if morning else 'fatigue'] %}
     <div class="form-field">
       <label for="{{ name }}">{{ labels[name] }}</label>
@@ -27,40 +33,49 @@
       {{ error_for(name) }}
     </div>
   {% endfor %}
-</fieldset>
-{{ radio_field('leg_symptoms') }}
-<div data-leg-details>
-  <p>Se hai indicato sintomi alla gamba, descrivili qui. In caso contrario lascia vuoto.</p>
-  {{ text_field('leg_details', 500) }}
 </div>
-<fieldset>
-  <legend>Segnali gialli</legend>
-  {% for form_key, flag in yellow_form_keys.items() %}
-    {% if morning or form_key == 'yellow_local_discomfort' %}
-      <label class="choice"><input type="checkbox" name="{{ form_key }}" {% if values.get(form_key) %}checked{% endif %}> {{ yellow_labels[flag] }}</label>
-    {% endif %}
-  {% endfor %}
-</fieldset>
-<fieldset>
-  <legend>Segnali rossi</legend>
-  {% for flag, label in red_labels.items() %}
-    <label class="choice"><input type="checkbox" name="red_{{ flag }}" data-red-flag {% if values.get('red_' ~ flag) %}checked{% endif %}> {{ label }}</label>
-  {% endfor %}
-</fieldset>
-{% if morning %}
-  {{ radio_field('back_to_baseline') }}
-  {% for name, options in [('discomfort_onset', onset_labels), ('approximate_duration', duration_labels)] %}
-    <div class="form-field">
-      <label for="{{ name }}">{{ labels[name] }} (obbligatorio)</label>
-      <select id="{{ name }}" name="{{ name }}" required {{ error_attrs(name) }}>
-        <option value="">Scegli una risposta</option>
-        {% if values.get(name) and values.get(name) not in options %}<option value="{{ values[name] }}" selected>{{ values[name] }}</option>{% endif %}
-        {% for value, label in options.items() %}<option value="{{ value }}" {% if values.get(name) == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
-      </select>
-      {{ error_for(name) }}
-    </div>
-  {% endfor %}
-{% else %}
-  {{ text_field('additional_activity', 1000) }}
-{% endif %}
-{{ text_field('notes', 2000) }}
+<div class="card-group">
+  <h2><span class="num">2</span>Gamba</h2>
+  {{ radio_field('leg_symptoms') }}
+  <div data-leg-details>
+    <p>Se hai indicato sintomi alla gamba, descrivili qui. In caso contrario lascia vuoto.</p>
+    {{ text_field('leg_details', 500) }}
+  </div>
+</div>
+<div class="card-group">
+  <h2><span class="num">3</span>Segnali</h2>
+  <fieldset class="flag-group yellow">
+    <legend>Segnali gialli</legend>
+    {% for form_key, flag in yellow_form_keys.items() %}
+      {% if morning or form_key == 'yellow_local_discomfort' %}
+        <label class="choice"><input type="checkbox" name="{{ form_key }}" {% if values.get(form_key) %}checked{% endif %}> {{ yellow_labels[flag] }}</label>
+      {% endif %}
+    {% endfor %}
+  </fieldset>
+  <fieldset class="flag-group red">
+    <legend>Segnali rossi</legend>
+    {% for flag, label in red_labels.items() %}
+      <label class="choice"><input type="checkbox" name="red_{{ flag }}" data-red-flag {% if values.get('red_' ~ flag) %}checked{% endif %}> {{ label }}</label>
+    {% endfor %}
+  </fieldset>
+</div>
+<div class="card-group">
+  <h2><span class="num">4</span>{{ 'Attività e note' if not morning else 'Ritorno alla normalità e note' }}</h2>
+  {% if morning %}
+    {{ radio_field('back_to_baseline') }}
+    {% for name, options in [('discomfort_onset', onset_labels), ('approximate_duration', duration_labels)] %}
+      <div class="form-field">
+        <label for="{{ name }}">{{ labels[name] }} (obbligatorio)</label>
+        <select id="{{ name }}" name="{{ name }}" required {{ error_attrs(name) }}>
+          <option value="">Scegli una risposta</option>
+          {% if values.get(name) and values.get(name) not in options %}<option value="{{ values[name] }}" selected>{{ values[name] }}</option>{% endif %}
+          {% for value, label in options.items() %}<option value="{{ value }}" {% if values.get(name) == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+        {{ error_for(name) }}
+      </div>
+    {% endfor %}
+  {% else %}
+    {{ text_field('additional_activity', 1000) }}
+  {% endif %}
+  {{ text_field('notes', 2000) }}
+</div>
