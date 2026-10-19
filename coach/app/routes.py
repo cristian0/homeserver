@@ -1,12 +1,11 @@
 """Public routes for the current guided session."""
 
-from datetime import datetime
 import json
 import re
-from zoneinfo import ZoneInfo
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, url_for
 
+from .coach_text import STATUS_LABELS, format_local, local_today
 from .db import get_db
 from .feedback_validation import (
     FeedbackValidationError,
@@ -16,12 +15,22 @@ from .feedback_validation import (
     validate_next_morning_feedback,
 )
 from .plan_validation import PlanValidationError, parse_plan_input, plan_item_ids, validate_plan, youtube_embed_url
-from .summary import DURATION_LABELS, ONSET_LABELS, RED_FLAG_LABELS, YELLOW_FLAG_LABELS
+from .summary import (
+    DURATION_LABELS, EXERCISE_RATING_LABELS, ONSET_LABELS, RED_FLAG_LABELS, YELLOW_FLAG_LABELS,
+)
 from .workflow import (
     WorkflowError,
+    accept_proposal,
+    add_journal_entry,
+    build_pack_text,
+    build_state_text,
+    discard_proposal,
     finalize_session,
     get_current_session,
+    get_pending_proposal,
+    get_proposal,
     get_session,
+    import_offer,
     import_session,
     list_sessions,
     mark_rest_started,
@@ -34,17 +43,12 @@ from .workflow import (
 
 
 main = Blueprint("main", __name__)
-ROME = ZoneInfo("Europe/Rome")
-STATUS_LABELS = {
-    "planned": "da fare", "immediate_done": "feedback immediato inserito",
-    "complete": "conclusa", "superseded": "sostituita",
-}
 
 
 def _local_time(value):
     if value is None:
         return None
-    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(ROME).strftime("%d/%m/%Y %H:%M")
+    return format_local(value)
 
 
 _DURATION_RE = re.compile(r"(\d+)(?:\s*[–-]\s*(\d+))?\s*(secondi|secondo|minuti|minuto)", re.IGNORECASE)
@@ -127,7 +131,7 @@ def _present_session(session):
 def _workflow_status(error):
     if error.code == "not_found":
         return 404
-    if error.code in {"invalid_state", "pre_operational"}:
+    if error.code in {"invalid_state", "pre_operational", "proposal_not_pending"}:
         return 409
     return 400
 
@@ -149,7 +153,15 @@ def import_preview():
     except PlanValidationError as error:
         return render_template("import_plan.html", raw_plan=raw_plan, errors=error.errors), 400
     normalized_plan = json.dumps(plan, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
-    return render_template("import_preview.html", plan=plan, normalized_plan=normalized_plan)
+    return render_template(
+        "import_preview.html", normalized_plan=normalized_plan, proposal=None,
+        **_preview_context(get_db(), plan),
+    )
+
+
+def _preview_context(conn, plan):
+    """Shared by manual import and coach proposals: state problems and replacement offer."""
+    return dict(plan=plan, **import_offer(conn, plan))
 
 
 @main.post("/import/confirm")
@@ -159,11 +171,62 @@ def import_confirm():
         plan = validate_plan(parse_plan_input(raw_plan))
     except PlanValidationError as error:
         return render_template("import_plan.html", raw_plan=raw_plan, errors=error.errors), 400
+    replace_current = request.form.get("replace_current") == "yes"
+    supersedes = replace_current or plan.get("replaces_session_id") is not None
+    if supersedes and request.form.get("confirm") != "yes":
+        return _form_error("Conferma la sostituzione della scheda corrente.", 400)
+    expected_current_id = request.form.get("expected_current_id") if replace_current else None
     try:
-        import_session(get_db(), plan, utc_now_iso())
+        import_session(
+            get_db(), plan, utc_now_iso(),
+            replace_current=replace_current, expected_current_id=expected_current_id,
+        )
     except WorkflowError as error:
         return _form_error(str(error), 409)
     flash("Scheda importata.")
+    return redirect(url_for("main.today"))
+
+
+@main.get("/proposals/<int:proposal_id>")
+def proposal_preview(proposal_id):
+    conn = get_db()
+    proposal = get_proposal(conn, proposal_id)
+    if proposal is None:
+        return _form_error("Proposta non trovata.", 404)
+    if proposal["status"] != "pending":
+        return _form_error("La proposta non è più in attesa.", 409)
+    return render_template(
+        "import_preview.html", proposal=proposal, proposal_created_at=_local_time(proposal["created_at"]),
+        **_preview_context(conn, proposal["plan"]),
+    )
+
+
+@main.post("/proposals/<int:proposal_id>/accept")
+def proposal_accept(proposal_id):
+    if request.form.get("confirm") != "yes":
+        return _form_error("Conferma l'importazione della proposta.", 400)
+    replace_current = request.form.get("replace_current") == "yes"
+    expected_current_id = request.form.get("expected_current_id") if replace_current else None
+    try:
+        accept_proposal(
+            get_db(), proposal_id, utc_now_iso(),
+            replace_current=replace_current, expected_current_id=expected_current_id,
+        )
+    except WorkflowError as error:
+        return _form_error(str(error), 404 if error.code == "not_found" else 409)
+    flash("Proposta importata.")
+    return redirect(url_for("main.today"))
+
+
+@main.post("/proposals/<int:proposal_id>/discard")
+def proposal_discard(proposal_id):
+    if request.form.get("confirm") != "yes":
+        return _form_error("Conferma lo scarto della proposta.", 400)
+    try:
+        discard_proposal(get_db(), proposal_id, utc_now_iso())
+    except WorkflowError as error:
+        return _form_error(str(error), _workflow_status(error))
+    flash("Proposta scartata.")
     return redirect(url_for("main.today"))
 
 
@@ -173,10 +236,44 @@ def history():
     return render_template("history.html", sessions=sessions)
 
 
+@main.get("/coach/state")
+def coach_state():
+    return render_template("coach_state.html", state_text=build_state_text(get_db(), utc_now_iso()))
+
+
+@main.get("/coach/pack")
+def coach_pack():
+    now = utc_now_iso()
+    response = Response(build_pack_text(get_db(), now), content_type="text/markdown; charset=utf-8")
+    response.headers["Content-Disposition"] = f'attachment; filename="pacchetto-coach-{local_today(now)}.md"'
+    return response
+
+
+def _render_today(error_message=None, status=200):
+    conn = get_db()
+    session = _present_session(get_current_session(conn))
+    return render_template(
+        "today.html", session=session, error_message=error_message,
+        pending_proposal=get_pending_proposal(conn),
+        journal_today=local_today(utc_now_iso()),
+    ), status
+
+
 @main.get("/")
 def today():
-    session = _present_session(get_current_session(get_db()))
-    return render_template("today.html", session=session, error_message=None)
+    return _render_today()
+
+
+@main.post("/journal")
+def journal():
+    try:
+        add_journal_entry(
+            get_db(), request.form.get("entry_date"), request.form.get("text"), utc_now_iso()
+        )
+    except WorkflowError as error:
+        return _render_today(str(error), _workflow_status(error))
+    flash("Nota salvata.")
+    return redirect(url_for("main.today"))
 
 
 @main.post("/sessions/<session_id>/completion")
@@ -222,6 +319,8 @@ FEEDBACK_LABELS = {
     "leg_details": "Dettaglio dei sintomi alla gamba", "back_to_baseline": "Ritorno al livello abituale",
     "additional_activity": "Altra attività o carichi", "notes": "Note",
     "discomfort_onset": "Comparsa del fastidio", "approximate_duration": "Durata approssimativa",
+    "perceived_effort": "Sforzo percepito della sessione (0–10)", "difficulties": "Difficoltà generali",
+    "exercise_feedback": "Come sono andati gli esercizi",
 }
 YELLOW_FORM_KEYS = {
     "yellow_local_discomfort": "local_discomfort_more_than_usual",
@@ -232,13 +331,37 @@ YELLOW_FORM_KEYS = {
 def _feedback_context():
     return dict(labels=FEEDBACK_LABELS, red_labels=RED_FLAG_LABELS,
                 yellow_labels=YELLOW_FLAG_LABELS, yellow_form_keys=YELLOW_FORM_KEYS,
-                onset_labels=ONSET_LABELS, duration_labels=DURATION_LABELS)
+                onset_labels=ONSET_LABELS, duration_labels=DURATION_LABELS,
+                rating_labels=EXERCISE_RATING_LABELS)
+
+
+def _plan_exercises(session):
+    """Plan items in order, flagged as completed or skipped."""
+    completed = set(session["completion"])
+    return [
+        {"id": item["id"], "name": item["name"], "completed": item["id"] in completed}
+        for section in session["plan"]["sections"]
+        for item in section["items"]
+    ]
+
+
+def _form_field_for_error(path):
+    """Map `exercise_feedback.<id>[.rating|.note]` validator paths to the form field names."""
+    if not path.startswith("exercise_feedback."):
+        return path
+    _, identifier, *rest = path.split(".")
+    return f"rating_{identifier}" if rest == ["rating"] else f"note_{identifier}"
 
 
 def _saved_form_values(feedback):
     values = {}
     for key, value in (feedback or {}).items():
-        if key == "red_flags":
+        if key == "exercise_feedback":
+            for identifier, entry in value.items():
+                values.update({f"{field}_{identifier}": text for field, text in entry.items()})
+        elif value is None:
+            continue
+        elif key == "red_flags":
             values.update({f"red_{flag}": checked for flag, checked in value.items()})
         elif key == "yellow_flags":
             values.update({form_key: value.get(flag, False) for form_key, flag in YELLOW_FORM_KEYS.items()})
@@ -263,8 +386,9 @@ def _detail_response(session, error_message=None, status=200):
         for feedback in (session["immediate_feedback"], session["next_morning_feedback"])
         if feedback
     )
+    exercise_names = {item["id"]: item["name"] for item in _plan_exercises(session)}
     return render_template("session_detail.html", session=session, presented=_present_session(session),
-                           can_finalize=can_finalize, red_selected=red_selected,
+                           can_finalize=can_finalize, red_selected=red_selected, exercise_names=exercise_names,
                            error_message=error_message, **_feedback_context()), status
 
 
@@ -296,22 +420,35 @@ def _feedback_route(session_id, morning):
         values = request.form
         try:
             if morning:
-                save_next_morning_feedback(get_db(), session_id, next_morning_payload_from_form(values))
+                save_next_morning_feedback(
+                    get_db(), session_id, next_morning_payload_from_form(values), utc_now_iso()
+                )
             else:
-                save_immediate_feedback(get_db(), session_id, immediate_payload_from_form(values), utc_now_iso())
+                payload = immediate_payload_from_form(values, plan_item_ids(session["plan"]))
+                save_immediate_feedback(get_db(), session_id, payload, utc_now_iso())
         except FeedbackValidationError as error:
             for item in error.errors:
                 field, _, message = item.partition(": ")
-                errors.setdefault(field.removeprefix("$."), []).append(message)
+                errors.setdefault(_form_field_for_error(field.removeprefix("$.")), []).append(message)
         except WorkflowError as error:
             return _detail_response(get_session(get_db(), session_id), str(error), _workflow_status(error))
         else:
             flash("Feedback del mattino salvato." if morning else "Feedback immediato salvato. Le spunte sono bloccate.")
             return redirect(url_for("main.session_detail", session_id=session_id))
+    total = len(plan_item_ids(session["plan"]))
+    exercises = [] if morning else _plan_exercises(session)
+    exercise_labels = {}
+    for exercise in exercises:
+        exercise_labels[f"rating_{exercise['id']}"] = f"Valutazione: {exercise['name']}"
+        exercise_labels[f"note_{exercise['id']}"] = f"Nota: {exercise['name']}"
     return render_template(
         "next_morning_feedback.html" if morning else "immediate_feedback.html",
         session=session, values=values, errors=errors, morning=morning,
+        exercises=exercises, exercise_labels=exercise_labels,
+        show_effort=not morning and session["activity_type"] != "rest",
         red_selected=any(values.get(f"red_{key}") for key in RED_FLAG_LABELS),
+        completed_count=len(session["completion"]), total_count=total,
+        skipped_count=total - len(session["completion"]),
         **_feedback_context(),
     ), 400 if errors else 200
 

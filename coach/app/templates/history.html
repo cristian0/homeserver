@@ -2,6 +2,7 @@
 {% block title %}Storico · Coach ginnastica{% endblock %}
 {% block content %}
 <h1>Storico delle sessioni</h1>
+<p class="coach-links"><a href="{{ url_for('main.coach_state') }}">Stato per il coach</a> · <a href="{{ url_for('main.coach_pack') }}" download>Pacchetto per il coach</a></p>
 <ol class="history-list">
   {% for session in sessions %}
     <li>

@@ -25,6 +25,7 @@
 | Beszel | 8090 | http://192.168.1.10:8090 |
 | Music Assistant | 8095 | http://192.168.1.10:8095 |
 | Coach Ginnastica | 8098 | http://192.168.1.10:8098 |
+| Coach Ginnastica MCP | 8765 | http://192.168.1.10:8765/mcp (token, solo LAN/VPN) |
 
 ---
 
@@ -665,6 +666,20 @@ APP_UID="$(id -u)" APP_GID="$(id -g)" docker compose up -d --build coach
 
 Make sure the service was started with `APP_UID`/`APP_GID` matching the host user that owns `/srv/docker/coach/data`.
 
+### Server MCP per il coach (`coach-mcp`, dalla v1.1)
+
+Secondo servizio costruito dalla stessa directory `coach/` e con lo stesso volume `./coach/data`: `python -m app.mcp_server`, HTTP streamable su `/mcp`. Claude Desktop sul Mac lo usa per leggere stato e storico e per proporre schede (l'utente le conferma nell'app).
+
+- Porta pubblicata solo su `192.168.1.10:8765` (LAN e VPN); mai inoltrarla dal router. Le porte pubblicate da Docker scavalcano ufw.
+- Ogni richiesta richiede `Authorization: Bearer <token>`; il token è in `./coach/data/mcp-token` (0600, creato al primo avvio). Per ruotarlo: cancellare il file, riavviare `coach-mcp` e aggiornare la configurazione di Claude Desktop.
+- Configurazione di Claude Desktop: README del repository dell'app, sezione "Collegare il coach su Claude Desktop".
+- Aggiornamento: `APP_UID="$(id -u)" APP_GID="$(id -g)" docker compose up -d --build coach coach-mcp`. All'avvio l'app migra il database in modo additivo.
+- Verifica: `curl -s -o /dev/null -w "%{http_code}\n" -X POST http://192.168.1.10:8765/mcp` deve rispondere `401`.
+
+### Backup
+
+Backup a caldo e coerenti (API di backup di SQLite) in `./coach/backups/` (git-ignored, 0700): copia `.db` più archivio `coach-ginnastica-data-*.tar.gz` con `coach.db` e `app-secret`. Il backup del 2026-10-19 08:35 è lo storico precedente alla v1.1 e va conservato.
+
 ---
 
 ## 17. Accessing Services
@@ -681,6 +696,7 @@ Make sure the service was started with `APP_UID`/`APP_GID` matching the host use
 | Beszel | http://192.168.1.10:8090 |
 | Music Assistant | http://192.168.1.10:8095 |
 | Coach Ginnastica | http://192.168.1.10:8098 |
+| Coach Ginnastica MCP | http://192.168.1.10:8765/mcp (token) |
 
 ### From Outside (VPN Required)
 

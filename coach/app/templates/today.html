@@ -2,19 +2,44 @@
 {% block title %}Oggi · Coach ginnastica{% endblock %}
 {% block content %}
   {% if error_message %}<p class="form-error" role="alert">{{ error_message }}</p>{% endif %}
+  {% if pending_proposal %}
+    <section class="pending-proposal" data-pending-proposal role="status">
+      <p>Il coach propone: {{ pending_proposal.plan.title }}</p>
+      <p><a class="button" href="{{ url_for('main.proposal_preview', proposal_id=pending_proposal.id) }}">Vedi la proposta</a></p>
+    </section>
+  {% endif %}
   {% if session is none %}
-    <section class="empty-state">
+    <section class="page-head empty-state">
       <h1>Nessuna scheda corrente</h1>
-      <p>Quando il coach ti fornisce una nuova scheda, puoi importarla qui.</p>
-      <a class="button" href="/import">Importa scheda</a>
+      <p class="meta">Quando il coach ti fornisce una nuova scheda, puoi importarla qui.</p>
+      <p class="after-list"><a class="button" href="/import">Importa scheda</a></p>
     </section>
   {% else %}
-    <article class="today" data-session-id="{{ session.id }}" data-completion-enabled="{{ 'true' if session.status == 'planned' and not session.pre_operational and not session.is_empty_rest else 'false' }}" data-view="list">
-      <header class="today-head">
-        <p class="eyebrow">Giornata {{ session.sequence_number }} · {{ session.type }} · {{ session.estimated_minutes }} minuti</p>
+    {% set interactive = session.status == 'planned' and not session.pre_operational and not session.is_empty_rest %}
+    <article class="today" data-session-id="{{ session.id }}" data-completion-enabled="{{ 'true' if interactive else 'false' }}" data-view="list">
+      {% if interactive %}
+        <div class="focus-top" data-focus-top>
+          <button type="button" class="xbtn" data-focus-exit>✕ Elenco</button>
+          <span><b data-focus-position>{{ session.current_item_index or session.total }} di {{ session.total }}</b> · <span data-focus-section></span></span>
+          <span class="focus-nav">
+            <button type="button" class="xbtn" data-focus-prev aria-label="Esercizio precedente">‹</button>
+            <button type="button" class="xbtn" data-focus-next aria-label="Esercizio successivo">›</button>
+          </span>
+        </div>
+      {% endif %}
+
+      <header class="page-head">
+        <span class="eyebrow">Giornata {{ session.sequence_number }} · {{ session.type }} · {{ session.estimated_minutes }} minuti</span>
         <h1>{{ session.title }}</h1>
-        <p class="meta">Importata il {{ session.imported_at }}{% if session.started_at %} · Attività iniziata il {{ session.started_at }}{% endif %}</p>
       </header>
+
+      {% if not session.is_empty_rest %}
+        <div class="seg" data-seg aria-hidden="true">{% for section in session.sections %}{% for item in section["items"] %}<span class="{% if item.id in session.completion %}on{% elif item.id == session.current_item_id %}cur{% endif %}"></span>{% endfor %}{% endfor %}</div>
+        <p class="meta page-meta"><span data-progress-text>{{ session.completion|length }} di {{ session.total }} completati</span> · Importata il {{ session.imported_at }}{% if session.started_at %} · Attività iniziata il {{ session.started_at }}{% endif %}</p>
+        <progress class="progress-sr" data-progress value="{{ session.completion|length }}" max="{{ session.total }}">{{ session.completion|length }} di {{ session.total }}</progress>
+      {% else %}
+        <p class="meta page-meta">Importata il {{ session.imported_at }}{% if session.started_at %} · Attività iniziata il {{ session.started_at }}{% endif %}</p>
+      {% endif %}
 
       {% if session.pre_operational %}
         <section class="pre-operational" role="status">
@@ -24,16 +49,14 @@
       {% endif %}
 
       {% if session.notes %}
-        <section class="chips-section" aria-labelledby="note-title">
-          <h2 id="note-title">Indicazioni</h2>
-          <ul class="chips">{% for note in session.notes %}<li class="chip">{{ note }}</li>{% endfor %}</ul>
-        </section>
+        <h2 id="note-title" class="sr-only">Indicazioni</h2>
+        <ul class="chips" aria-labelledby="note-title">{% for note in session.notes %}<li class="chip">{{ note }}</li>{% endfor %}</ul>
       {% endif %}
 
       {% include '_semaphore.html' %}
 
       {% if session.is_empty_rest %}
-        <section class="rest-action">
+        <section class="rest-action after-list">
           <h2>Giornata di riposo</h2>
           <form method="post" action="{{ url_for('main.mark_rest', session_id=session.id) }}" data-confirm="Registra la giornata di riposo?">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -42,83 +65,96 @@
           </form>
         </section>
       {% else %}
-        <section class="progress-section" aria-live="polite">
-          <p class="progress-count"><span data-progress-text>{{ session.completion|length }} di {{ session.total }} completati</span></p>
-          <progress data-progress value="{{ session.completion|length }}" max="{{ session.total }}">{{ session.completion|length }} di {{ session.total }}</progress>
-          {% if session.status == 'planned' and not session.pre_operational %}
-            <div class="progress-actions">
-              {% if session.current_item_id %}<button type="button" class="ghost sm" data-focus-enter>Modalità esercizio</button>{% endif %}
-              <form method="post" action="{{ url_for('main.reset_completion_route', session_id=session.id) }}" data-confirm="Azzerare tutte le spunte?">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="confirm" value="yes">
-                <button type="submit" class="ghost sm">Azzera le spunte</button>
-              </form>
-            </div>
-          {% endif %}
-        </section>
-
         <p class="form-error" data-completion-error role="alert" hidden></p>
-
-        <div class="focus-top" data-focus-top>
-          <button type="button" class="xbtn" data-focus-exit>✕ Elenco</button>
-          <span data-focus-position>{% if session.current_item_index %}{{ session.current_item_index }} di {{ session.total }}{% endif %}</span>
-          <span style="width:44px" aria-hidden="true"></span>
-        </div>
-
+        {% set counter = namespace(n=0) %}
         {% for section in session.sections %}
           <section class="exercise-section">
             <h2>{{ section.title }}</h2>
             <ol>
-                {% for item in section["items"] %}
-                <li class="exercise-item{% if item.id == session.current_item_id %} is-current{% endif %}" data-item-id="{{ item.id }}">
+              {% for item in section["items"] %}
+                {% set counter.n = counter.n + 1 %}
+                <li class="exercise-item{% if item.id == session.current_item_id %} is-current{% endif %}" data-item-id="{{ item.id }}" data-section="{{ section.title }}">
                   <label class="item-row">
-                    <input type="checkbox" value="{{ item.id }}" {% if item.id in session.completion %}checked{% endif %} {% if session.status != 'planned' or session.pre_operational %}disabled{% endif %}>
-                    <span class="item-name">{{ item.name }}</span>
+                    <input type="checkbox" value="{{ item.id }}" {% if item.id in session.completion %}checked{% endif %} {% if not interactive %}disabled{% endif %}>
+                    <span class="item-n">{{ counter.n }}</span>
+                    <span class="item-name" data-n="{{ counter.n }}">{{ item.name }}</span>
                     <span class="item-dose">{{ item.dose }}</span>
+                    <span class="item-state">In corso</span>
                   </label>
-                  <p class="item-cue"><span class="eyebrow">Tecnica</span>{{ item.cue }}</p>
-                  {% if item.timer_seconds %}
-                    <div class="timer" data-timer data-timer-seconds="{{ item.timer_seconds }}">
-                      <div class="timer-ring" data-timer-ring><span data-timer-display>{{ '%d:%02d'|format(item.timer_seconds // 60, item.timer_seconds % 60) }}</span></div>
-                      <div class="timer-controls">
-                        <button type="button" class="ghost sm" data-timer-start>Avvia</button>
-                        <button type="button" class="ghost sm" data-timer-reset>Ricomincia</button>
+                  {% if interactive %}<button type="button" class="item-open" data-focus-open aria-label="Apri l'esercizio {{ item.name }}">›</button>{% endif %}
+                  <div class="item-detail">
+                    {% if item.timer_seconds and interactive %}
+                      <div class="timer" data-timer data-timer-seconds="{{ item.timer_seconds }}">
+                        <div class="timer-ring" data-timer-ring><span><b data-timer-display>{{ '%d:%02d'|format(item.timer_seconds // 60, item.timer_seconds % 60) }}</b><small>rimanenti</small></span></div>
+                        <div class="timer-controls">
+                          <button type="button" class="ghost sm" data-timer-start>▶ Avvia</button>
+                          <button type="button" class="ghost sm" data-timer-reset>↻ Riparti da {{ item.timer_seconds }} s</button>
+                        </div>
                       </div>
-                    </div>
-                  {% endif %}
-                  <div class="item-video">
-                    {% if item.embed_url %}
-                      <button type="button" class="video-toggle ghost sm" data-video-embed="{{ item.embed_url }}" aria-expanded="false">{{ item.video_label or 'Guarda il video' }}</button>
                     {% endif %}
-                    {% if item.video_url %}<a href="{{ item.video_url }}" target="_blank" rel="noopener noreferrer">Apri il video</a>{% endif %}
-                    {% if item.alternate_video_url %}<a href="{{ item.alternate_video_url }}" target="_blank" rel="noopener noreferrer">Video alternativo</a>{% endif %}
+                    <p class="item-cue"><span class="eyebrow">Tecnica</span>{{ item.cue }}</p>
+                    <div class="item-video">
+                      {% if item.embed_url %}
+                        <button type="button" class="video-toggle ghost sm" data-video-embed="{{ item.embed_url }}" aria-expanded="false">{{ item.video_label or 'Guarda il video' }}</button>
+                      {% endif %}
+                      {% if item.video_url %}<a href="{{ item.video_url }}" target="_blank" rel="noopener noreferrer">Apri il video</a>{% endif %}
+                      {% if item.alternate_video_url %}<a href="{{ item.alternate_video_url }}" target="_blank" rel="noopener noreferrer">Video alternativo</a>{% endif %}
+                    </div>
+                    {% if item.video_note %}<p class="video-note">{{ item.video_note }}</p>{% endif %}
                   </div>
-                  {% if item.video_note %}<p class="video-note">{{ item.video_note }}</p>{% endif %}
                 </li>
               {% endfor %}
             </ol>
           </section>
         {% endfor %}
 
-        {% if session.current_item_id %}
-        <div data-list-bar><button type="button" data-focus-enter>Continua · <span data-focus-current-name>{{ session.current_item_name }}</span></button></div>
-        {% endif %}
-        <div data-focus-bar>
-          <div class="focus-nav">
-            <button type="button" class="sq ghost" data-focus-prev aria-label="Esercizio precedente">‹</button>
-            <button type="button" class="sq ghost" data-focus-next aria-label="Esercizio successivo">›</button>
+        {% if interactive %}
+          <div class="list-footer">
+            <form method="post" action="{{ url_for('main.reset_completion_route', session_id=session.id) }}" data-confirm="Azzerare tutte le spunte?">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="confirm" value="yes">
+              <button type="submit" class="linklike">Azzera le spunte</button>
+            </form>
+            <a href="/sessions/{{ session.id }}/feedback/immediate">Vai al feedback immediato</a>
           </div>
-          <button type="button" data-focus-done>✓ Fatto, avanti</button>
-          <button type="button" class="ghost sm" data-focus-skip>Salta</button>
-        </div>
+          <div data-list-bar>
+            <button type="button" data-focus-enter {% if not session.current_item_id %}hidden{% endif %}><span>Continua · <span data-focus-current-index>{{ session.current_item_index }}</span>. <span data-focus-current-name>{{ session.current_item_name }}</span> ›</span></button>
+            <a class="button" href="/sessions/{{ session.id }}/feedback/immediate" data-feedback-cta {% if session.current_item_id %}hidden{% endif %}>Inserisci feedback immediato</a>
+          </div>
+          <div data-focus-bar>
+            <button type="button" data-focus-done>✓ Fatto, avanti</button>
+            <button type="button" class="ghost sm" data-focus-skip>Salta questo esercizio</button>
+          </div>
+        {% endif %}
       {% endif %}
 
-      {% if not session.pre_operational and session.status == 'planned' %}
-        <p><a class="button" href="/sessions/{{ session.id }}/feedback/immediate">Inserisci feedback immediato</a></p>
-      {% elif not session.pre_operational and session.status == 'immediate_done' %}
-        <p><a class="button" href="/sessions/{{ session.id }}/feedback/immediate">Correggi feedback immediato</a></p>
-        <p><a class="button" href="/sessions/{{ session.id }}/feedback/next-morning">Inserisci feedback del mattino successivo</a></p>
+      {% if not session.pre_operational and session.status == 'immediate_done' %}
+        <div class="after-list">
+          <p><a class="button" href="/sessions/{{ session.id }}/feedback/next-morning">Inserisci feedback del mattino successivo</a></p>
+          <p class="note"><a href="/sessions/{{ session.id }}/feedback/immediate">Correggi feedback immediato</a></p>
+        </div>
       {% endif %}
     </article>
   {% endif %}
+
+  <section class="after-list">
+    <h2>Per il coach</h2>
+    <p class="coach-links"><a href="{{ url_for('main.coach_state') }}">Stato per il coach</a> · <a href="{{ url_for('main.coach_pack') }}" download>Pacchetto per il coach</a></p>
+  </section>
+
+  <section class="journal-note after-list">
+    <h2>Nota del giorno</h2>
+    <form method="post" action="{{ url_for('main.journal') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-field">
+        <label for="journal-date">Data</label>
+        <input type="date" id="journal-date" name="entry_date" value="{{ journal_today }}" max="{{ journal_today }}" required>
+      </div>
+      <div class="form-field">
+        <label for="journal-text">Nota <small>(da 1 a 1000 caratteri)</small></label>
+        <textarea id="journal-text" name="text" rows="3" maxlength="1000" required></textarea>
+      </div>
+      <button type="submit">Salva nota</button>
+    </form>
+  </section>
 {% endblock %}

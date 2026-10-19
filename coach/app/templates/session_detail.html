@@ -2,8 +2,11 @@
 {% block title %}Riepilogo sessione · Coach ginnastica{% endblock %}
 {% block content %}
 <article data-session-id="{{ session.id }}" data-completion-enabled="false">
-  <h1>{{ session.title }}</h1>
-  <p>Giornata {{ session.sequence_number }} · {{ presented.type }} · {{ session.estimated_minutes }} minuti</p>
+  <header class="page-head">
+    <span class="eyebrow">Giornata {{ session.sequence_number }} · {{ presented.type }} · {{ session.estimated_minutes }} minuti</span>
+    <h1>{{ session.title }}</h1>
+  </header>
+  <div class="detail-meta">
   <p>Identificatore: {{ session.id }} · Stato: {{ presented.status_label }}</p>
   <p>Importata il {{ presented.imported_at }}</p>
   {% if presented.started_at %}<p>Attività iniziata il {{ presented.started_at }}</p>{% endif %}
@@ -14,6 +17,7 @@
   {% if session.superseded_by_id %}<p>Sostituita da: <a href="{{ url_for('main.session_detail', session_id=session.superseded_by_id) }}">{{ session.superseded_by_id }}</a></p>{% endif %}
   {% if error_message %}<p class="form-error" role="alert">{{ error_message }}</p>{% endif %}
   {% if session.status in ['complete', 'superseded'] %}<p>Sessione di sola lettura.</p>{% endif %}
+  </div>
   {% if session.pre_operational %}<p class="pre-operational">Piano pre-operativo: non iniziare finché non sono stati verificati diario pressorio, risposta del medico e assenza di dolore o nuovi sintomi neurologici quel giorno.</p>{% endif %}
   {% include '_semaphore.html' %}
   {% with plan = session.plan %}{% include '_plan_readonly.html' %}{% endwith %}
@@ -40,6 +44,14 @@
             {% if key in ['yellow_flags', 'red_flags'] %}
               <dt>{{ 'Segnali gialli' if key == 'yellow_flags' else 'Segnali rossi' }}</dt>
               <dd>{% for flag, checked in value.items() %}{{ (yellow_labels if key == 'yellow_flags' else red_labels)[flag] }}: {{ 'sì' if checked else 'no' }}{% if not loop.last %}; {% endif %}{% endfor %}</dd>
+            {% elif key == 'exercise_feedback' %}
+              <dt>{{ labels[key] }}</dt>
+              {% for identifier, entry in value.items() %}
+                <dd>{{ exercise_names.get(identifier, identifier) }}: {{ '; '.join(([rating_labels[entry.rating]] if entry.rating else []) + ([entry.note] if entry.note else [])) }}</dd>
+              {% else %}<dd>Nessuno</dd>{% endfor %}
+            {% elif key == 'perceived_effort' %}
+              <dt>{{ labels[key] }}</dt>
+              <dd>{% if value is not none %}{{ value }}/10{% elif session.plan.activity_type == 'rest' %}Non applicabile{% else %}Non registrato{% endif %}</dd>
             {% else %}
               <dt>{{ labels[key] }}</dt>
               <dd>{% if value is sameas true %}sì{% elif value is sameas false %}no{% elif key == 'discomfort_onset' %}{{ onset_labels[value] }}{% elif key == 'approximate_duration' %}{{ duration_labels[value] }}{% else %}{{ value if value != '' else 'Nessuno' }}{% if key in ['lumbar_pain', 'stiffness', 'fatigue', 'residual_fatigue'] %}/10{% endif %}{% endif %}</dd>

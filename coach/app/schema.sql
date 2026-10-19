@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     imported_at TEXT NOT NULL,
     started_at TEXT,
     immediate_saved_at TEXT,
+    morning_saved_at TEXT,
     completed_at TEXT,
     superseded_at TEXT,
     superseded_by_id TEXT REFERENCES sessions(id)
@@ -32,3 +33,23 @@ WHERE status IN ('planned', 'immediate_done');
 
 CREATE INDEX IF NOT EXISTS sessions_sequence
 ON sessions (sequence_number, imported_at);
+
+CREATE TABLE IF NOT EXISTS journal_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entry_date TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    text TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS plan_proposals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL,
+    plan_json TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('pending', 'accepted', 'discarded')),
+    decided_at TEXT,
+    session_id TEXT REFERENCES sessions(id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS one_pending_proposal
+ON plan_proposals ((1))
+WHERE status = 'pending';

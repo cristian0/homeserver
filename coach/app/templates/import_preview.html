@@ -2,18 +2,43 @@
 {% block title %}Anteprima scheda · Coach ginnastica{% endblock %}
 {% block content %}
 <article>
+  {% if proposal %}<p class="eyebrow">Proposta del coach · inviata il {{ proposal_created_at }}</p>{% endif %}
   <h1>Anteprima: {{ plan.title }}</h1>
   <p>Giornata {{ plan.sequence_number }} · {{ {'complete': 'Completa', 'mobility': 'Mobilità', 'walk': 'Camminata', 'rest': 'Riposo', 'combined': 'Combinata'}[plan.activity_type] }} · {{ plan.estimated_minutes }} minuti</p>
   <p>Identificatore: {{ plan.session_id }}</p>
   {% if plan.pre_operational %}<p class="pre-operational">Piano pre-operativo: da sostituire prima di iniziare.</p>{% endif %}
-  {% if plan.replaces_session_id %}<p>Questa scheda richiede di sostituire la sessione pre-operativa {{ plan.replaces_session_id }}. La sessione precedente resterà nello storico.</p>{% endif %}
+  {% if plan.replaces_session_id %}<p>Questa scheda sostituisce la scheda corrente {{ plan.replaces_session_id }}, se non è ancora iniziata. La precedente resterà nello storico come sostituita.</p>{% endif %}
   {% include '_plan_readonly.html' %}
-  <p>La scheda non è ancora stata salvata. Alla conferma saranno verificati anche lo stato corrente e l'eventuale sostituzione.</p>
+  <p>La scheda non è ancora stata salvata. Alla conferma saranno verificati di nuovo lo stato corrente e l'eventuale sostituzione.</p>
+  {% if replace_offer %}<p>La scheda corrente «{{ current.title }}» non è ancora iniziata: puoi sostituirla con questa. La precedente resterà nello storico come sostituita.</p>{% endif %}
+  {% if problems %}<ul id="import-problems" class="form-error" role="alert">{% for problem in problems %}<li>{{ problem }}</li>{% endfor %}</ul>{% endif %}
+  {% if proposal %}
+  <form method="post" action="{{ url_for('main.proposal_accept', proposal_id=proposal.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="confirm" value="yes">
+  {% else %}
   <form method="post" action="{{ url_for('main.import_confirm') }}" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <textarea name="normalized_plan" hidden>{{ normalized_plan }}</textarea>
-    <button type="submit">Conferma importazione</button>
+  {% endif %}
+    {% if replace_offer %}
+    {% if not proposal %}<input type="hidden" name="confirm" value="yes">{% endif %}
+    {% if replace_current %}
+    <input type="hidden" name="replace_current" value="yes">
+    <input type="hidden" name="expected_current_id" value="{{ current.id }}">
+    {% endif %}
+    {% endif %}
+    <button type="submit"{% if problems %} disabled aria-describedby="import-problems"{% endif %}>{% if replaces_current %}Sostituisci la scheda corrente{% else %}Conferma importazione{% endif %}</button>
   </form>
+  {% if proposal %}
+  <form method="post" action="{{ url_for('main.proposal_discard', proposal_id=proposal.id) }}" data-confirm="Scartare la proposta del coach?">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="confirm" value="yes">
+    <button type="submit" class="ghost">Scarta la proposta</button>
+  </form>
+  <p><a href="{{ url_for('main.today') }}">Torna a oggi</a></p>
+  {% else %}
   <p><a href="{{ url_for('main.import_plan_form') }}">Torna all'importazione</a></p>
+  {% endif %}
 </article>
 {% endblock %}

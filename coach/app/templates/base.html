@@ -10,9 +10,10 @@
   <body>
     <header class="site-header">
       <nav aria-label="Navigazione principale">
-        <a href="{{ url_for('main.today') }}">Oggi</a>
-        <a href="/history">Storico</a>
-        <a href="/import">Importa scheda</a>
+        <a href="{{ url_for('main.today') }}" {% if request.endpoint in ('main.today', 'main.immediate_feedback', 'main.next_morning_feedback') %}aria-current="page"{% endif %}>Oggi</a>
+        <a href="/history" {% if request.endpoint == 'main.history' %}aria-current="page"{% endif %}>Storico</a>
+        <a href="{{ url_for('main.coach_state') }}" {% if request.endpoint == 'main.coach_state' %}aria-current="page"{% endif %}>Coach</a>
+        <a href="/import" {% if request.endpoint and request.endpoint.startswith('main.import') %}aria-current="page"{% endif %}>Importa</a>
       </nav>
     </header>
     <main>

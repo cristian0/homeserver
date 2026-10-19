@@ -3,6 +3,16 @@
 {% block content %}
 <h1>Importa scheda</h1>
 <p>Incolla il JSON fornito dal coach, anche nel blocco racchiuso da tre apici inversi con etichetta json. Il blocco JSON può occupare al massimo 64 KiB.</p>
+{% if errors %}
+<section class="form-field" aria-labelledby="plan-errors-title">
+  <h2 id="plan-errors-title">Errori da correggere</h2>
+  <textarea id="plan-errors-text" data-copy-source readonly rows="{{ [errors|length + 2, 4]|max }}" spellcheck="false">Correggi la scheda JSON: l'app ha segnalato questi errori.
+{%- for error in errors %}
+{{ error }}{% endfor %}</textarea>
+  <button type="button" data-copy-text data-copy-target="plan-errors-text">Copia errori per il coach</button>
+  <p data-copy-status role="status" aria-live="polite"></p>
+</section>
+{% endif %}
 <form method="post" action="{{ url_for('main.import_preview') }}" enctype="multipart/form-data">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="form-field">

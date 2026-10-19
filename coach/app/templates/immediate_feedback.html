@@ -1,19 +1,20 @@
 {% extends "base.html" %}
 {% block title %}Feedback immediato · Coach ginnastica{% endblock %}
 {% block content %}
-<header class="today-head">
-  <p class="eyebrow">Giornata {{ session.sequence_number }} · {{ session.title }}</p>
+<header class="page-head">
+  <span class="eyebrow">Giornata {{ session.sequence_number }} · {{ completed_count }} di {{ total_count }} completati</span>
   <h1>Feedback immediato</h1>
+  <p class="meta">{{ session.title }}</p>
 </header>
 <div class="info-card">
   <span class="badge" aria-hidden="true">i</span>
-  <p>Salvando il feedback, le spunte diventano definitive e gli esercizi non spuntati sono considerati saltati. Puoi correggere i feedback fino alla finalizzazione.</p>
+  <p>Salvando il feedback, le spunte diventano definitive: <strong>{% if skipped_count == 0 %}nessun esercizio risulterà saltato{% elif skipped_count == 1 %}1 esercizio risulterà saltato{% else %}{{ skipped_count }} esercizi risulteranno saltati{% endif %}</strong>. Puoi correggere i feedback fino alla finalizzazione.</p>
 </div>
 {% include '_semaphore.html' %}
 <form method="post" data-feedback-form>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% include '_feedback_fields.html' %}
-  <button type="submit">Salva feedback immediato</button>
+  <div class="form-bar"><button type="submit">Salva feedback immediato</button></div>
 </form>
-<p><a href="{{ url_for('main.session_detail', session_id=session.id) }}">Riepilogo della sessione</a></p>
+<p class="note after-list"><a href="{{ url_for('main.session_detail', session_id=session.id) }}">Riepilogo della sessione</a></p>
 {% endblock %}

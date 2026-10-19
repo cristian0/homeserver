@@ -21,6 +21,7 @@ Personal self-hosted infrastructure running on Fujitsu Q916 mini PC with Debian.
 | Beszel | 8090 | Server monitoring |
 | Music Assistant | 8095 | Music streaming & player management |
 | Coach Ginnastica | 8098 | Gymnastics coaching sessions (custom-built app) |
+| Coach Ginnastica MCP | 8765 | MCP server for the coach in Claude Desktop (token, LAN/VPN only) |
 
 ## Architecture
 

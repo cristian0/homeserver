@@ -1,9 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Mattino successivo · Coach ginnastica{% endblock %}
 {% block content %}
-<header class="today-head">
-  <p class="eyebrow">Giornata {{ session.sequence_number }} · {{ session.title }}</p>
+<header class="page-head">
+  <span class="eyebrow">Giornata {{ session.sequence_number }} · {{ completed_count }} di {{ total_count }} completati</span>
   <h1>Feedback del mattino successivo</h1>
+  <p class="meta">{{ session.title }}</p>
 </header>
 <div class="info-card">
   <span class="badge" aria-hidden="true">i</span>
@@ -13,7 +14,7 @@
 <form method="post" data-feedback-form>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% include '_feedback_fields.html' %}
-  <button type="submit">Salva feedback del mattino</button>
+  <div class="form-bar"><button type="submit">Salva feedback del mattino</button></div>
 </form>
-<p><a href="{{ url_for('main.session_detail', session_id=session.id) }}">Riepilogo della sessione</a></p>
+<p class="note after-list"><a href="{{ url_for('main.session_detail', session_id=session.id) }}">Riepilogo della sessione</a></p>
 {% endblock %}

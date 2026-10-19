@@ -36,6 +36,9 @@ MORNING_KEYS = (
     "approximate_duration",
     "notes",
 )
+STRENGTH_KEYS = ("perceived_effort", "difficulties", "exercise_feedback")
+EXERCISE_RATINGS = frozenset({"easy", "right", "hard"})
+EXERCISE_FEEDBACK_KEYS = ("rating", "note")
 IMMEDIATE_YELLOW_KEYS = ("local_discomfort_more_than_usual",)
 MORNING_YELLOW_KEYS = (
     "local_discomfort_more_than_usual",
@@ -122,21 +125,59 @@ def _validate_common(errors, data, rating_keys, yellow_keys, root_keys):
         _validate_flags(errors, data["red_flags"], "$.red_flags", RED_FLAG_KEYS)
 
 
+def _validate_exercise_feedback(errors, value):
+    if type(value) is not dict:
+        errors.append("$.exercise_feedback: deve essere un oggetto")
+        return
+    for identifier in sorted(value, key=str):
+        entry = value[identifier]
+        path = f"$.exercise_feedback.{identifier}"
+        if type(entry) is not dict:
+            errors.append(f"{path}: deve essere un oggetto")
+            continue
+        if not any(key in entry for key in EXERCISE_FEEDBACK_KEYS):
+            errors.append(f"{path}: indica una valutazione o una nota")
+        for key in sorted(entry, key=str):
+            if key not in EXERCISE_FEEDBACK_KEYS:
+                errors.append(f"{path}.{key}: chiave non consentita")
+        if "rating" in entry:
+            _validate_enum(errors, entry["rating"], f"{path}.rating", EXERCISE_RATINGS)
+        if "note" in entry:
+            _validate_text(errors, entry["note"], f"{path}.note", 300, required=True)
+
+
+def _validate_strength(errors, data):
+    """v1 feedback has none of the strength keys; v1.1 feedback has all of them."""
+    present = [key for key in STRENGTH_KEYS if key in data]
+    if not present:
+        return
+    for key in STRENGTH_KEYS:
+        if key not in data:
+            errors.append(f"$.{key}: campo obbligatorio mancante")
+    if "perceived_effort" in data and data["perceived_effort"] is not None:
+        _validate_rating(errors, data["perceived_effort"], "$.perceived_effort")
+    if "difficulties" in data:
+        _validate_text(errors, data["difficulties"], "$.difficulties", 1000)
+    if "exercise_feedback" in data:
+        _validate_exercise_feedback(errors, data["exercise_feedback"])
+
+
 def validate_immediate_feedback(data):
-    """Validate immediate feedback and return a detached deep copy."""
+    """Validate v1 or v1.1 immediate feedback and return a detached deep copy."""
     errors = []
     _validate_common(
         errors,
         data,
         ("lumbar_pain", "stiffness", "fatigue"),
         IMMEDIATE_YELLOW_KEYS,
-        IMMEDIATE_KEYS,
+        IMMEDIATE_KEYS + tuple(key for key in STRENGTH_KEYS if type(data) is dict and key in data),
     )
     if type(data) is dict:
         if "additional_activity" in data:
             _validate_text(errors, data["additional_activity"], "$.additional_activity", 1000)
         if "notes" in data:
             _validate_text(errors, data["notes"], "$.notes", 2000)
+        _validate_strength(errors, data)
     if errors:
         raise FeedbackValidationError(errors)
     return deepcopy(data)
@@ -213,8 +254,27 @@ def _form_red_flags(form):
     return {key: _form_checkbox(form, f"red_{key}") for key in RED_FLAG_KEYS}
 
 
-def immediate_payload_from_form(form):
-    """Construct the complete immediate-feedback schema from form data."""
+def _form_effort(form):
+    return None if _form_value(form, "perceived_effort") == "" else _form_rating(form, "perceived_effort")
+
+
+def _form_exercise_feedback(form, item_ids):
+    feedback = {}
+    for identifier in item_ids:
+        entry = {}
+        rating = _form_value(form, f"rating_{identifier}")
+        note = _form_value(form, f"note_{identifier}")
+        if rating != "":
+            entry["rating"] = rating
+        if note != "":
+            entry["note"] = note
+        if entry:
+            feedback[identifier] = entry
+    return feedback
+
+
+def immediate_payload_from_form(form, item_ids):
+    """Construct the complete v1.1 immediate-feedback schema from form data."""
     return {
         "lumbar_pain": _form_rating(form, "lumbar_pain"),
         "stiffness": _form_rating(form, "stiffness"),
@@ -227,6 +287,9 @@ def immediate_payload_from_form(form):
         "red_flags": _form_red_flags(form),
         "additional_activity": _form_value(form, "additional_activity"),
         "notes": _form_value(form, "notes"),
+        "perceived_effort": _form_effort(form),
+        "difficulties": _form_value(form, "difficulties"),
+        "exercise_feedback": _form_exercise_feedback(form, item_ids),
     }
 
 

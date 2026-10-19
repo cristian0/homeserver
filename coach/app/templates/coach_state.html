@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Stato per il coach · Coach ginnastica{% endblock %}
+{% block content %}
+<h1>Stato per il coach</h1>
+<p>Copia questo testo e incollalo nella conversazione con il coach, oppure scarica il pacchetto completo da aggiungere ai file del progetto.</p>
+<div class="form-field">
+  <label for="coach-state">Stato attuale</label>
+  <textarea id="coach-state" data-copy-source readonly rows="22" spellcheck="false" aria-describedby="coach-state-manual">{{ state_text }}</textarea>
+  <p id="coach-state-manual">Se la copia non riesce, seleziona e copia manualmente.</p>
+</div>
+<button type="button" data-copy-text data-copy-target="coach-state">Copia stato per il coach</button>
+<p data-copy-status role="status" aria-live="polite"></p>
+<p><a class="button" href="{{ url_for('main.coach_pack') }}" download>Scarica il pacchetto per il coach</a></p>
+{% endblock %}

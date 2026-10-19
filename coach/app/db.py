@@ -31,14 +31,33 @@ def immediate_transaction(conn):
         raise
 
 
+@contextmanager
+def read_transaction(conn):
+    """One consistent snapshot for several reads; takes no write lock.
+
+    BEGIN stays outside the try: if it fails (e.g. already in a transaction)
+    the caller's outer transaction must not be rolled back.
+    """
+    conn.execute("BEGIN")
+    try:
+        yield
+    finally:
+        if conn.in_transaction:
+            conn.rollback()
+
+
+def open_connection(path):
+    """An autocommit connection with the app's PRAGMAs; usable without Flask."""
+    connection = sqlite3.connect(str(path), isolation_level=None)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA busy_timeout = 5000")
+    return connection
+
+
 def get_db():
     if "db" not in g:
-        database_path = current_app.config["DATABASE_PATH"]
-        connection = sqlite3.connect(str(database_path), isolation_level=None)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA busy_timeout = 5000")
-        g.db = connection
+        g.db = open_connection(current_app.config["DATABASE_PATH"])
     return g.db
 
 
@@ -53,6 +72,10 @@ def init_database(conn=None):
     if conn is None:
         conn = get_db()
     conn.executescript(schema_path.read_text(encoding="utf-8"))
+    # v1 databases predate morning_saved_at; CREATE TABLE IF NOT EXISTS keeps them as is.
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(sessions)")}
+    if "morning_saved_at" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN morning_saved_at TEXT")
 
 
 def seed_initial_session(conn, seed_path, now):
@@ -151,6 +174,19 @@ def row_to_session(row):
     return session
 
 
+def row_to_proposal(row):
+    """A stored proposal with its plan validated again, like a session's."""
+    if row is None:
+        raise RuntimeError("Riga della proposta mancante.")
+    try:
+        return {
+            "id": row["id"], "created_at": row["created_at"],
+            "plan": validate_plan(parse_plan_input(row["plan_json"])), "status": row["status"],
+        }
+    except Exception:
+        raise RuntimeError("Dati della proposta non leggibili.") from None
+
+
 def ensure_secret_file(path):
     path = os.fspath(path)
     try:
@@ -165,4 +201,22 @@ def ensure_secret_file(path):
 
     if len(value) < 32:
         raise RuntimeError("secret file must contain at least 32 bytes")
+    return value
+
+
+def ensure_token_file(path):
+    """The MCP bearer token: created once (0600, exclusive), then read back."""
+    path = os.fspath(path)
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError:
+        with open(path, encoding="ascii") as token_file:
+            value = token_file.read().strip()
+    else:
+        value = secrets.token_urlsafe(32)
+        with os.fdopen(fd, "w", encoding="ascii") as token_file:
+            token_file.write(value)
+
+    if len(value) < 32:
+        raise RuntimeError("token file must contain at least 32 characters")
     return value

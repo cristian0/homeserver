@@ -2,33 +2,37 @@
   {% if errors.get(name) %}<p class="form-error" id="error-{{ name }}" role="alert">{{ errors[name]|join('. ') }}</p>{% endif %}
 {% endmacro %}
 {% macro error_attrs(name) %}{% if errors.get(name) %}aria-invalid="true" aria-describedby="error-{{ name }}"{% endif %}{% endmacro %}
-{% macro text_field(name, maximum) %}
+{% macro text_field(name, maximum, optional=false) %}
   <div class="form-field">
-    <label for="{{ name }}">{{ labels[name] }}</label>
+    <label for="{{ name }}">{{ labels[name] }}{% if optional %} <small>facoltativo</small>{% endif %}</label>
     <textarea id="{{ name }}" name="{{ name }}" maxlength="{{ maximum }}" rows="3" {{ error_attrs(name) }}>{{ values.get(name, '') }}</textarea>
     {{ error_for(name) }}
   </div>
 {% endmacro %}
 {% macro radio_field(name) %}
   <fieldset {{ error_attrs(name) }}>
-    <legend>{{ labels[name] }} (obbligatorio)</legend>
-    {% for value, label in [('yes', 'Sì'), ('no', 'No')] %}
-      <label class="choice"><input type="radio" name="{{ name }}" value="{{ value }}" {% if values.get(name) == value %}checked{% endif %} required {{ error_attrs(name) }}> {{ label }}</label>
-    {% endfor %}
+    <legend>{{ labels[name] }} <small>(obbligatorio)</small></legend>
+    <div class="yn">
+      {% for value, label in [('yes', 'Sì'), ('no', 'No')] %}
+        <label class="choice"><input type="radio" name="{{ name }}" value="{{ value }}" {% if values.get(name) == value %}checked{% endif %} required {{ error_attrs(name) }}> {{ label }}</label>
+      {% endfor %}
+    </div>
     {{ error_for(name) }}
   </fieldset>
 {% endmacro %}
 {% if errors %}
   <div class="errsum" role="alert">
-    <strong>Controlla {{ errors|length }} campo{{ 'i' if errors|length != 1 else '' }}:</strong>
-    {% for name in errors %}<a href="#error-{{ name }}">{{ labels.get(name, name) }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+    <strong>Controlla {{ errors|length }} camp{{ 'i' if errors|length != 1 else 'o' }}:</strong>
+    {% for name in errors %}<a href="#error-{{ name }}">{{ labels.get(name) or exercise_labels.get(name, name) }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
   </div>
 {% endif %}
 <div class="card-group">
   <h2><span class="num">1</span>Valutazioni da 0 a 10</h2>
-  {% for name in ['lumbar_pain', 'stiffness', 'residual_fatigue' if morning else 'fatigue'] %}
+  {% for name in ['lumbar_pain', 'stiffness', 'residual_fatigue' if morning else 'fatigue'] + (['perceived_effort'] if show_effort else []) %}
     <div class="form-field">
       <label for="{{ name }}">{{ labels[name] }}</label>
+      {% if name == 'perceived_effort' %}<p class="hint">Quanto è stata dura, non quanto sei stanco ora</p>{% endif %}
+      <div class="scale{% if errors.get(name) %} err{% endif %}" data-scale-for="{{ name }}" role="group" aria-label="{{ labels[name] }}, da 0 a 10">{% for value in range(11) %}<button type="button" data-value="{{ value }}" aria-pressed="{{ 'true' if values.get(name)|string == value|string else 'false' }}">{{ value }}</button>{% endfor %}</div>
       <input type="number" id="{{ name }}" name="{{ name }}" min="0" max="10" step="1" inputmode="numeric" value="{{ values.get(name, '') }}" required {{ error_attrs(name) }}>
       {{ error_for(name) }}
     </div>
@@ -38,14 +42,14 @@
   <h2><span class="num">2</span>Gamba</h2>
   {{ radio_field('leg_symptoms') }}
   <div data-leg-details>
-    <p>Se hai indicato sintomi alla gamba, descrivili qui. In caso contrario lascia vuoto.</p>
+    <p class="hint">Se hai indicato sintomi alla gamba, descrivili qui. In caso contrario lascia vuoto.</p>
     {{ text_field('leg_details', 500) }}
   </div>
 </div>
 <div class="card-group">
   <h2><span class="num">3</span>Segnali</h2>
   <fieldset class="flag-group yellow">
-    <legend>Segnali gialli</legend>
+    <legend>Gialli</legend>
     {% for form_key, flag in yellow_form_keys.items() %}
       {% if morning or form_key == 'yellow_local_discomfort' %}
         <label class="choice"><input type="checkbox" name="{{ form_key }}" {% if values.get(form_key) %}checked{% endif %}> {{ yellow_labels[flag] }}</label>
@@ -53,19 +57,19 @@
     {% endfor %}
   </fieldset>
   <fieldset class="flag-group red">
-    <legend>Segnali rossi</legend>
+    <legend>Rossi</legend>
     {% for flag, label in red_labels.items() %}
       <label class="choice"><input type="checkbox" name="red_{{ flag }}" data-red-flag {% if values.get('red_' ~ flag) %}checked{% endif %}> {{ label }}</label>
     {% endfor %}
   </fieldset>
 </div>
 <div class="card-group">
-  <h2><span class="num">4</span>{{ 'Attività e note' if not morning else 'Ritorno alla normalità e note' }}</h2>
+  <h2><span class="num">4</span>{{ 'Ritorno alla normalità e note' if morning else 'Attività e note' }}</h2>
   {% if morning %}
     {{ radio_field('back_to_baseline') }}
     {% for name, options in [('discomfort_onset', onset_labels), ('approximate_duration', duration_labels)] %}
       <div class="form-field">
-        <label for="{{ name }}">{{ labels[name] }} (obbligatorio)</label>
+        <label for="{{ name }}">{{ labels[name] }} <small>(obbligatorio)</small></label>
         <select id="{{ name }}" name="{{ name }}" required {{ error_attrs(name) }}>
           <option value="">Scegli una risposta</option>
           {% if values.get(name) and values.get(name) not in options %}<option value="{{ values[name] }}" selected>{{ values[name] }}</option>{% endif %}
@@ -75,7 +79,32 @@
       </div>
     {% endfor %}
   {% else %}
-    {{ text_field('additional_activity', 1000) }}
+    {{ text_field('additional_activity', 1000, true) }}
   {% endif %}
-  {{ text_field('notes', 2000) }}
+  {{ text_field('notes', 2000, true) }}
 </div>
+{% if not morning %}
+<div class="card-group">
+  <h2><span class="num">5</span>{{ labels['exercise_feedback'] }}</h2>
+  <p class="hint">Tutto facoltativo: commenta solo ciò che vuoi segnalare al coach</p>
+  {{ text_field('difficulties', 1000, true) }}
+  {% for exercise in exercises %}
+    {% set rating_name = 'rating_' ~ exercise.id %}
+    {% set note_name = 'note_' ~ exercise.id %}
+    <fieldset class="exercise-feedback" data-exercise-feedback="{{ exercise.id }}" {{ error_attrs(rating_name) }}>
+      <legend>{{ exercise.name }} <small>{{ 'completato' if exercise.completed else 'saltato' }}</small></legend>
+      <div class="yn rating">
+        {% for value, label in rating_labels.items() %}
+          <label class="choice"><input type="radio" name="{{ rating_name }}" value="{{ value }}" {% if values.get(rating_name) == value %}checked{% endif %} {{ error_attrs(rating_name) }}> {{ label }}</label>
+        {% endfor %}
+      </div>
+      {{ error_for(rating_name) }}
+      <div class="form-field">
+        <label for="{{ note_name }}">{{ 'Nota' if exercise.completed else "Perché l'hai saltato?" }} <small>facoltativo</small></label>
+        <textarea id="{{ note_name }}" name="{{ note_name }}" maxlength="300" rows="2" {{ error_attrs(note_name) }}>{{ values.get(note_name, '') }}</textarea>
+        {{ error_for(note_name) }}
+      </div>
+    </fieldset>
+  {% endfor %}
+</div>
+{% endif %}

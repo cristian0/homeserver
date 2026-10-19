@@ -134,3 +134,23 @@ services:
       retries: 5
       start_period: 10s
 
+  coach-mcp:
+    container_name: coach-mcp
+    build:
+      context: ./coach
+      args:
+        APP_UID: ${APP_UID:-1000}
+        APP_GID: ${APP_GID:-1000}
+    command: ["python", "-m", "app.mcp_server"]
+    restart: unless-stopped
+    ports:
+      # Solo LAN/VPN: mai inoltrare dal router. Richiede il token in ./coach/data/mcp-token.
+      - "192.168.1.10:8765:8765"
+    volumes:
+      - ./coach/data:/app/data
+    environment:
+      TZ: Europe/Rome
+    depends_on:
+      coach:
+        condition: service_healthy
+

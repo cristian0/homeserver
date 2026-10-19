@@ -1,4 +1,5 @@
 (() => {
+  if (document.documentElement && document.documentElement.classList) document.documentElement.classList.add("js");
   const page = document.querySelector("[data-session-id]");
   const csrf = document.querySelector('meta[name="csrf-token"]');
 
@@ -19,9 +20,32 @@
       const index = rows.findIndex((row) => !rowCheckbox(row).checked);
       return index === -1 ? rows.length - 1 : index;
     };
-    const highlightCurrent = () => {
+    const segments = Array.from(document.querySelectorAll("[data-seg] span"));
+    const continueButton = document.querySelector("[data-focus-enter]");
+    const feedbackCta = document.querySelector("[data-feedback-cta]");
+    const currentIndexLabel = document.querySelector("[data-focus-current-index]");
+    const currentNameLabel = document.querySelector("[data-focus-current-name]");
+    const allDone = () => rows.length > 0 && rows.every((row) => rowCheckbox(row).checked);
+    const renderSegments = (currentIndex) => {
+      segments.forEach((segment, i) => {
+        const done = rows[i] ? rowCheckbox(rows[i]).checked : false;
+        segment.className = done ? "on" : (i === currentIndex ? "cur" : "");
+      });
+    };
+    const renderListBar = () => {
+      const done = allDone();
       const index = firstUncheckedIndex();
+      const name = rows[index] ? rows[index].querySelector(".item-name") : null;
+      if (currentIndexLabel) currentIndexLabel.textContent = String(index + 1);
+      if (currentNameLabel) currentNameLabel.textContent = name ? name.textContent : "";
+      if (continueButton) continueButton.hidden = done;
+      if (feedbackCta) feedbackCta.hidden = !done;
+    };
+    const highlightCurrent = () => {
+      const index = allDone() ? -1 : firstUncheckedIndex();
       rows.forEach((row, i) => row.classList.toggle("is-current", i === index));
+      renderSegments(index);
+      renderListBar();
     };
 
     const selectedIds = () => checkboxes.filter((item) => item.checked).map((item) => item.value);
@@ -91,20 +115,21 @@
     });
 
     const focusPosition = document.querySelector("[data-focus-position]");
-    const focusCurrentName = document.querySelector("[data-focus-current-name]");
+    const focusSection = document.querySelector("[data-focus-section]");
     let focusIndex = -1;
 
     const renderFocus = () => {
       rows.forEach((row, index) => row.classList.toggle("is-current", index === focusIndex));
+      renderSegments(focusIndex);
       if (focusPosition) focusPosition.textContent = rows.length ? `${focusIndex + 1} di ${rows.length}` : "";
       const current = rows[focusIndex];
-      const name = current ? current.querySelector(".item-name") : null;
-      if (focusCurrentName) focusCurrentName.textContent = name ? name.textContent : "";
+      if (focusSection) focusSection.textContent = current ? (current.dataset.section || "") : "";
+      window.scrollTo(0, 0);
     };
 
-    const enterFocus = () => {
+    const enterFocus = (index) => {
       if (!rows.length) return;
-      focusIndex = firstUncheckedIndex();
+      focusIndex = typeof index === "number" ? index : firstUncheckedIndex();
       page.dataset.view = "focus";
       document.body.dataset.focusMode = "on";
       renderFocus();
@@ -122,7 +147,11 @@
       renderFocus();
     };
 
-    document.querySelectorAll("[data-focus-enter]").forEach((button) => button.addEventListener("click", enterFocus));
+    document.querySelectorAll("[data-focus-enter]").forEach((button) => button.addEventListener("click", () => enterFocus()));
+    rows.forEach((row, index) => {
+      const open = row.querySelector("[data-focus-open]");
+      if (open) open.addEventListener("click", () => enterFocus(index));
+    });
     const focusExit = document.querySelector("[data-focus-exit]");
     if (focusExit) focusExit.addEventListener("click", exitFocus);
     const focusPrev = document.querySelector("[data-focus-prev]");
@@ -168,18 +197,18 @@
         render();
         if (remaining <= 0) {
           stop();
-          if (startButton) startButton.textContent = "Fatto";
+          if (startButton) startButton.textContent = "✓ Tempo finito";
         }
       };
       if (startButton) {
         startButton.addEventListener("click", () => {
           if (intervalId !== null) {
             stop();
-            startButton.textContent = "Riprendi";
+            startButton.textContent = "▶ Riprendi";
             return;
           }
           if (remaining <= 0) remaining = totalSeconds;
-          startButton.textContent = "Pausa";
+          startButton.textContent = "⏸ Pausa";
           intervalId = setInterval(tick, 1000);
         });
       }
@@ -187,7 +216,7 @@
         resetButton.addEventListener("click", () => {
           stop();
           remaining = totalSeconds;
-          if (startButton) startButton.textContent = "Avvia";
+          if (startButton) startButton.textContent = "▶ Avvia";
           render();
         });
       }
@@ -228,6 +257,23 @@
     });
   });
 
+  // Scala 0–10 a tessere: l'input numerico resta la sorgente del dato inviato.
+  document.querySelectorAll("[data-scale-for]").forEach((scale) => {
+    const input = document.getElementById(scale.dataset.scaleFor);
+    if (!input) return;
+    const tiles = Array.from(scale.querySelectorAll("button"));
+    const sync = () => tiles.forEach((tile) => tile.setAttribute("aria-pressed", String(tile.dataset.value === input.value)));
+    tiles.forEach((tile) => {
+      tile.addEventListener("click", () => {
+        input.value = tile.dataset.value;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        sync();
+      });
+    });
+    input.addEventListener("input", sync);
+    sync();
+  });
+
   const redWarning = document.querySelector("[data-red-warning]");
   const redFlags = Array.from(document.querySelectorAll("[data-red-flag]"));
   redFlags.forEach((flag) => {
@@ -240,28 +286,43 @@
   const copyStatus = document.querySelector("[data-copy-status]");
   const copyButton = document.querySelector("[data-copy-summary]");
   const finalizeForm = document.querySelector("[data-finalize-form]");
-  const copySummary = async () => {
-    if (!summary || !summary.value) {
-      if (copyStatus) copyStatus.textContent = "Finalizza il feedback per ottenere il riepilogo.";
-      return;
-    }
+  // Copia da una textarea di sola lettura: Clipboard API, poi execCommand, poi selezione manuale.
+  const copyFrom = async (source, status, doneMessage) => {
+    const setStatus = (message) => { if (status) status.textContent = message; };
     try {
-      await navigator.clipboard.writeText(summary.value);
-      copyStatus.textContent = "Riepilogo copiato.";
+      await navigator.clipboard.writeText(source.value);
+      setStatus(doneMessage);
       return;
     } catch (_clipboardError) {
       // Clipboard API is often unavailable on a local HTTP connection.
     }
-    summary.focus();
-    summary.select();
+    source.focus();
+    source.select();
     let copied = false;
     try {
       copied = document.execCommand("copy");
     } catch (_legacyCopyError) {
       // Keep the visible text selected for the browser's manual copy action.
     }
-    copyStatus.textContent = copied ? "Riepilogo copiato." : "Seleziona e copia manualmente";
+    setStatus(copied ? doneMessage : "Seleziona e copia manualmente");
   };
+  const copySummary = async () => {
+    if (!summary || !summary.value) {
+      if (copyStatus) copyStatus.textContent = "Finalizza il feedback per ottenere il riepilogo.";
+      return;
+    }
+    await copyFrom(summary, copyStatus, "Riepilogo copiato.");
+  };
+  document.querySelectorAll("[data-copy-text]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const source = document.getElementById(button.dataset.copyTarget);
+      if (!source || !source.value) {
+        if (copyStatus) copyStatus.textContent = "Niente da copiare.";
+        return;
+      }
+      return copyFrom(source, copyStatus, "Testo copiato.");
+    });
+  });
   if (copyButton) copyButton.addEventListener("click", copySummary);
   if (finalizeForm) {
     let finalizing = false;
