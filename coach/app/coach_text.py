@@ -24,7 +24,7 @@ ACTIVITY_LABELS = {
 }
 STATUS_LABELS = {
     "planned": "da fare", "immediate_done": "feedback immediato inserito",
-    "complete": "conclusa", "superseded": "sostituita",
+    "complete": "conclusa", "superseded": "sostituita", "skipped": "non eseguita",
 }
 YELLOW_FLAG_LABELS = {
     "local_discomfort_more_than_usual": "Fastidio locale più del solito",
@@ -72,8 +72,11 @@ def generated_header(now):
 
 
 def session_timestamp(session):
-    """When the session happened: first tick, else immediate feedback, else completion."""
-    for key in ("started_at", "immediate_saved_at", "completed_at"):
+    """When the session happened: first tick, else immediate feedback, else completion.
+
+    A skipped session never has the first three; it falls back to ``skipped_at``.
+    """
+    for key in ("started_at", "immediate_saved_at", "completed_at", "skipped_at"):
         if session.get(key) is not None:
             return session[key]
     return None
@@ -272,11 +275,15 @@ def _proposal_lines(proposal):
     lines = ["PROPOSTA IN ATTESA"]
     if proposal is None:
         return lines + ["nessuna"]
+    sent = f"(inviata il {format_local(proposal['created_at'])})"
+    if proposal["kind"] == "skip":
+        target = proposal["target"]
+        return lines + [prefixed_text(
+            f"segnare come non eseguita la sessione n.{target['sequence_number']} — ",
+            f"{target['title']} {sent}",
+        )]
     plan = proposal["plan"]
-    return lines + [prefixed_text(
-        f"n.{plan['sequence_number']} — ",
-        f"{plan['title']} (inviata il {format_local(proposal['created_at'])})",
-    )]
+    return lines + [prefixed_text(f"n.{plan['sequence_number']} — ", f"{plan['title']} {sent}")]
 
 
 def state_text(current, completed_desc, journal, pending_proposal, now):
@@ -313,6 +320,8 @@ def _pack_session_lines(session, previous_complete):
     ]
     timestamp = session_timestamp(session)
     lines.append(f"  Data: {format_local(timestamp) if timestamp is not None else 'non registrata'}")
+    if session.get("skipped_at") is not None:
+        lines.append(f"  Segnata come non eseguita: {format_local(session['skipped_at'])}")
     lines.append(f"  Durata: {duration_text(session)}")
     if session["status"] == "complete" and previous_complete is not None:
         days = days_between(previous_complete, session)

@@ -191,6 +191,8 @@ def session_detail_text(session, now):
     ]
     if session["status"] == "superseded":
         lines.append(f"Sostituita: {_moment(session.get('superseded_at'))} da {session.get('superseded_by_id') or '-'}")
+    if session["status"] == "skipped":
+        lines.append(f"Non eseguita: {_moment(session.get('skipped_at'))}")
     lines.extend(["", "NOTE DELLA SCHEDA"])
     lines.extend([_prefixed_text("- ", note) for note in plan["session_notes"]] or ["nessuna"])
     lines.extend(["", *_exercise_lines(plan, session["completion"]), ""])
@@ -200,9 +202,9 @@ def session_detail_text(session, now):
     lines.extend(["", "RIEPILOGO SALVATO"])
     summary = session.get("coach_summary_text")
     if summary is None:
-        lines.append(
-            "nessuno: la sessione è stata sostituita." if session["status"] == "superseded"
-            else "non ancora generato: la sessione non è conclusa."
-        )
+        lines.append({
+            "superseded": "nessuno: la sessione è stata sostituita.",
+            "skipped": "nessuno: la sessione non è stata eseguita.",
+        }.get(session["status"], "non ancora generato: la sessione non è conclusa."))
         return "\n".join(lines) + "\n"
     return "\n".join(lines) + "\n" + summary

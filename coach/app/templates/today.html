@@ -4,7 +4,13 @@
   {% if error_message %}<p class="form-error" role="alert">{{ error_message }}</p>{% endif %}
   {% if pending_proposal %}
     <section class="pending-proposal" data-pending-proposal role="status">
+      {% if pending_proposal.kind == 'skip' %}
+      <p>Il coach propone di segnare come non eseguita la sessione n.{{ pending_proposal.target.sequence_number }}: {{ pending_proposal.target.title }}</p>
+      {% elif proposal_modifies is not none %}
+      <p>Il coach propone di modificare la sessione n.{{ proposal_modifies }}: {{ pending_proposal.plan.title }}</p>
+      {% else %}
       <p>Il coach propone: {{ pending_proposal.plan.title }}</p>
+      {% endif %}
       <p><a class="button" href="{{ url_for('main.proposal_preview', proposal_id=pending_proposal.id) }}">Vedi la proposta</a></p>
     </section>
   {% endif %}
@@ -58,11 +64,9 @@
       {% if session.is_empty_rest %}
         <section class="rest-action after-list">
           <h2>Giornata di riposo</h2>
-          <form method="post" action="{{ url_for('main.mark_rest', session_id=session.id) }}" data-confirm="Registra la giornata di riposo?">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="confirm" value="yes">
-            <button type="submit" {% if session.pre_operational or session.status != 'planned' %}disabled{% endif %}>Registra la giornata</button>
-          </form>
+          {% if session.status == 'planned' and not session.pre_operational %}
+            <a class="button" href="/sessions/{{ session.id }}/feedback/immediate">Inserisci feedback immediato</a>
+          {% endif %}
         </section>
       {% else %}
         <p class="form-error" data-completion-error role="alert" hidden></p>
@@ -126,6 +130,14 @@
             <button type="button" class="ghost sm" data-focus-skip>Salta questo esercizio</button>
           </div>
         {% endif %}
+      {% endif %}
+
+      {% if session.status == 'planned' and not session.is_started %}
+        <form class="after-list" method="post" action="{{ url_for('main.skip_session_route', session_id=session.id) }}" data-confirm="Segnare la sessione come non eseguita? Resterà nello storico e non si potrà più modificare.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="confirm" value="yes">
+          <button type="submit" class="ghost">Segna come non eseguita</button>
+        </form>
       {% endif %}
 
       {% if not session.pre_operational and session.status == 'immediate_done' %}

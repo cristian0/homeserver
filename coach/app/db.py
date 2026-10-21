@@ -67,15 +67,53 @@ def close_db(_error=None):
         connection.close()
 
 
+def _migration_statements():
+    """The v1.2 rebuild of sessions and plan_proposals, one statement each.
+
+    The file holds no ';' inside literals or comments, so a plain split is safe.
+    """
+    text = Path(__file__).with_name("migrate_v12.sql").read_text(encoding="utf-8")
+    return [statement.strip() for statement in text.split(";") if statement.strip()]
+
+
+def _needs_v12_migration(conn):
+    sessions_sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'sessions'"
+    ).fetchone()[0]
+    proposal_columns = {row[1] for row in conn.execute("PRAGMA table_info(plan_proposals)")}
+    return "'skipped'" not in sessions_sql or "kind" not in proposal_columns
+
+
 def init_database(conn=None):
+    """Create a fresh schema, or bring a v1/v1.1 database to v1.2 atomically.
+
+    CREATE ... IF NOT EXISTS leaves older tables untouched; the rebuild then
+    runs in one immediate transaction (never executescript, which commits).
+    foreign_keys must be switched off outside a transaction for the rebuild.
+    """
     schema_path = Path(__file__).with_name("schema.sql")
     if conn is None:
         conn = get_db()
     conn.executescript(schema_path.read_text(encoding="utf-8"))
-    # v1 databases predate morning_saved_at; CREATE TABLE IF NOT EXISTS keeps them as is.
-    columns = {row[1] for row in conn.execute("PRAGMA table_info(sessions)")}
-    if "morning_saved_at" not in columns:
-        conn.execute("ALTER TABLE sessions ADD COLUMN morning_saved_at TEXT")
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            # v1 databases predate morning_saved_at.
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(sessions)")}
+            if "morning_saved_at" not in columns:
+                conn.execute("ALTER TABLE sessions ADD COLUMN morning_saved_at TEXT")
+            if _needs_v12_migration(conn):
+                for statement in _migration_statements():
+                    conn.execute(statement)
+            if conn.execute("PRAGMA foreign_key_check").fetchall():
+                raise RuntimeError("Migrazione del database non riuscita.")
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
 
 
 def seed_initial_session(conn, seed_path, now):
@@ -175,13 +213,22 @@ def row_to_session(row):
 
 
 def row_to_proposal(row):
-    """A stored proposal with its plan validated again, like a session's."""
+    """A stored proposal; a plan proposal's plan is validated again, like a session's."""
     if row is None:
         raise RuntimeError("Riga della proposta mancante.")
     try:
+        kind = row["kind"]
+        if kind == "plan":
+            plan, target = validate_plan(parse_plan_input(row["plan_json"])), None
+        elif kind == "skip":
+            plan, target = None, row["target_session_id"]
+            if not isinstance(target, str):
+                raise ValueError("sessione della proposta mancante")
+        else:
+            raise ValueError("tipo di proposta sconosciuto")
         return {
-            "id": row["id"], "created_at": row["created_at"],
-            "plan": validate_plan(parse_plan_input(row["plan_json"])), "status": row["status"],
+            "id": row["id"], "created_at": row["created_at"], "status": row["status"],
+            "kind": kind, "plan": plan, "target_session_id": target,
         }
     except Exception:
         raise RuntimeError("Dati della proposta non leggibili.") from None

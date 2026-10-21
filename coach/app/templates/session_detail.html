@@ -13,10 +13,11 @@
   {% if presented.immediate_saved_at %}<p>Feedback immediato salvato il {{ presented.immediate_saved_at }}</p>{% endif %}
   {% if presented.completed_at %}<p>Conclusa il {{ presented.completed_at }}</p>{% endif %}
   {% if presented.superseded_at %}<p>Sostituita il {{ presented.superseded_at }}</p>{% endif %}
+  {% if presented.skipped_at %}<p>Segnata come non eseguita il {{ presented.skipped_at }}</p>{% endif %}
   {% if session.plan.replaces_session_id %}<p>Sostituisce: <a href="{{ url_for('main.session_detail', session_id=session.plan.replaces_session_id) }}">{{ session.plan.replaces_session_id }}</a></p>{% endif %}
   {% if session.superseded_by_id %}<p>Sostituita da: <a href="{{ url_for('main.session_detail', session_id=session.superseded_by_id) }}">{{ session.superseded_by_id }}</a></p>{% endif %}
   {% if error_message %}<p class="form-error" role="alert">{{ error_message }}</p>{% endif %}
-  {% if session.status in ['complete', 'superseded'] %}<p>Sessione di sola lettura.</p>{% endif %}
+  {% if presented.is_terminal %}<p>Sessione di sola lettura.</p>{% endif %}
   </div>
   {% if session.pre_operational %}<p class="pre-operational">Piano pre-operativo: non iniziare finché non sono stati verificati diario pressorio, risposta del medico e assenza di dolore o nuovi sintomi neurologici quel giorno.</p>{% endif %}
   {% include '_semaphore.html' %}

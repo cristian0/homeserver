@@ -9,6 +9,7 @@
       <h2><a href="{{ url_for('main.session_detail', session_id=session.id) }}">Giornata {{ session.sequence_number }} · {{ session.title }}</a></h2>
       <p>Stato: {{ session.status_label }}</p>
       <p>{{ session.type }} · {{ session.estimated_minutes }} minuti · Importata il {{ session.imported_at }}</p>
+      {% if session.skipped_at %}<p>Segnata come non eseguita il {{ session.skipped_at }}</p>{% endif %}
     </li>
   {% else %}<li>Nessuna sessione nello storico.</li>{% endfor %}
 </ol>

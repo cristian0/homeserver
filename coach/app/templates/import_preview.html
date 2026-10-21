@@ -3,6 +3,7 @@
 {% block content %}
 <article>
   {% if proposal %}<p class="eyebrow">Proposta del coach · inviata il {{ proposal_created_at }}</p>{% endif %}
+  {% if replaces_current %}<p class="eyebrow">Modifica della sessione corrente n.{{ current.sequence_number }}</p>{% endif %}
   <h1>Anteprima: {{ plan.title }}</h1>
   <p>Giornata {{ plan.sequence_number }} · {{ {'complete': 'Completa', 'mobility': 'Mobilità', 'walk': 'Camminata', 'rest': 'Riposo', 'combined': 'Combinata'}[plan.activity_type] }} · {{ plan.estimated_minutes }} minuti</p>
   <p>Identificatore: {{ plan.session_id }}</p>

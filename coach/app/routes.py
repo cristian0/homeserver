@@ -19,6 +19,7 @@ from .summary import (
     DURATION_LABELS, EXERCISE_RATING_LABELS, ONSET_LABELS, RED_FLAG_LABELS, YELLOW_FLAG_LABELS,
 )
 from .workflow import (
+    TERMINAL_STATUSES,
     WorkflowError,
     accept_proposal,
     add_journal_entry,
@@ -32,12 +33,14 @@ from .workflow import (
     get_session,
     import_offer,
     import_session,
+    is_started,
     list_sessions,
-    mark_rest_started,
     reset_completion,
     save_completion,
     save_immediate_feedback,
+    skip_problem,
     save_next_morning_feedback,
+    skip_session,
     utc_now_iso,
 )
 
@@ -120,6 +123,9 @@ def _present_session(session):
         "immediate_saved_at": _local_time(session["immediate_saved_at"]),
         "completed_at": _local_time(session["completed_at"]),
         "superseded_at": _local_time(session["superseded_at"]),
+        "skipped_at": _local_time(session["skipped_at"]),
+        "is_started": is_started(session),
+        "is_terminal": session["status"] in TERMINAL_STATUSES,
         "status_label": STATUS_LABELS[session["status"]],
         "is_empty_rest": session["activity_type"] == "rest" and not plan_item_ids(plan),
         "current_item_id": current_item_id,
@@ -195,6 +201,13 @@ def proposal_preview(proposal_id):
         return _form_error("Proposta non trovata.", 404)
     if proposal["status"] != "pending":
         return _form_error("La proposta non è più in attesa.", 409)
+    if proposal["kind"] == "skip":
+        return render_template(
+            "proposal_skip.html", proposal=proposal,
+            proposal_created_at=_local_time(proposal["created_at"]),
+            target=_present_session(proposal["target"]),
+            problem=(skip_problem(proposal["target"]) or (None, None))[1],
+        )
     return render_template(
         "import_preview.html", proposal=proposal, proposal_created_at=_local_time(proposal["created_at"]),
         **_preview_context(conn, proposal["plan"]),
@@ -208,13 +221,13 @@ def proposal_accept(proposal_id):
     replace_current = request.form.get("replace_current") == "yes"
     expected_current_id = request.form.get("expected_current_id") if replace_current else None
     try:
-        accept_proposal(
+        accepted = accept_proposal(
             get_db(), proposal_id, utc_now_iso(),
             replace_current=replace_current, expected_current_id=expected_current_id,
         )
     except WorkflowError as error:
         return _form_error(str(error), 404 if error.code == "not_found" else 409)
-    flash("Proposta importata.")
+    flash("Sessione segnata come non eseguita." if accepted["status"] == "skipped" else "Proposta importata.")
     return redirect(url_for("main.today"))
 
 
@@ -251,10 +264,17 @@ def coach_pack():
 
 def _render_today(error_message=None, status=200):
     conn = get_db()
-    session = _present_session(get_current_session(conn))
+    current = get_current_session(conn)
+    session = _present_session(current)
+    proposal = get_pending_proposal(conn)
+    # A plan proposal that would replace the current session is a modification of it.
+    modifies = (
+        proposal is not None and proposal["kind"] == "plan"
+        and import_offer(conn, proposal["plan"])["replaces_current"]
+    )
     return render_template(
         "today.html", session=session, error_message=error_message,
-        pending_proposal=get_pending_proposal(conn),
+        pending_proposal=proposal, proposal_modifies=current["sequence_number"] if modifies else None,
         journal_today=local_today(utc_now_iso()),
     ), status
 
@@ -302,14 +322,15 @@ def reset_completion_route(session_id):
     return redirect(url_for("main.today"))
 
 
-@main.post("/sessions/<session_id>/mark-rest")
-def mark_rest(session_id):
+@main.post("/sessions/<session_id>/skip")
+def skip_session_route(session_id):
     if request.form.get("confirm") != "yes":
-        return _form_error("Conferma la registrazione della giornata.", 400)
+        return _form_error("Conferma che la sessione non è stata eseguita.", 400)
     try:
-        mark_rest_started(get_db(), session_id, utc_now_iso())
+        skip_session(get_db(), session_id, utc_now_iso())
     except WorkflowError as error:
         return _form_error(str(error), _workflow_status(error))
+    flash("Sessione segnata come non eseguita.")
     return redirect(url_for("main.today"))
 
 
@@ -404,7 +425,7 @@ def _feedback_route(session_id, morning):
     session = get_session(get_db(), session_id)
     if session is None:
         return _form_error("Sessione non trovata.", 404)
-    if session["status"] in {"complete", "superseded"}:
+    if session["status"] in TERMINAL_STATUSES:
         if request.method == "GET":
             return redirect(url_for("main.session_detail", session_id=session_id))
         return _detail_response(session, "La sessione non è modificabile.", 409)

@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS sessions (
         estimated_minutes BETWEEN 0 AND 180
     ),
     status TEXT NOT NULL CHECK (
-        status IN ('planned', 'immediate_done', 'complete', 'superseded')
+        status IN ('planned', 'immediate_done', 'complete', 'superseded', 'skipped')
     ),
     pre_operational INTEGER NOT NULL CHECK (pre_operational IN (0, 1)),
     plan_json TEXT NOT NULL,
@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     morning_saved_at TEXT,
     completed_at TEXT,
     superseded_at TEXT,
-    superseded_by_id TEXT REFERENCES sessions(id)
+    superseded_by_id TEXT REFERENCES sessions(id),
+    skipped_at TEXT
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_session
@@ -44,10 +45,16 @@ CREATE TABLE IF NOT EXISTS journal_entries (
 CREATE TABLE IF NOT EXISTS plan_proposals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at TEXT NOT NULL,
-    plan_json TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'plan' CHECK (kind IN ('plan', 'skip')),
+    plan_json TEXT,
     status TEXT NOT NULL CHECK (status IN ('pending', 'accepted', 'discarded')),
     decided_at TEXT,
-    session_id TEXT REFERENCES sessions(id)
+    session_id TEXT REFERENCES sessions(id),
+    target_session_id TEXT REFERENCES sessions(id),
+    CHECK (
+        (kind = 'plan' AND plan_json IS NOT NULL AND target_session_id IS NULL)
+        OR (kind = 'skip' AND plan_json IS NULL AND target_session_id IS NOT NULL)
+    )
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS one_pending_proposal

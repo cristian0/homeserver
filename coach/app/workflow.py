@@ -104,9 +104,12 @@ def _require_session(conn, session_id):
     return session
 
 
+TERMINAL_STATUSES = frozenset({"complete", "superseded", "skipped"})
+
+
 def _require_operational(session, allowed_states):
     # Terminal rows always report their immutable state, including old seeds.
-    if session["status"] in {"complete", "superseded"}:
+    if session["status"] in TERMINAL_STATUSES:
         raise WorkflowError("invalid_state", "La sessione non è modificabile.")
     if session["pre_operational"]:
         raise WorkflowError("pre_operational", "La scheda pre-operativa deve essere sostituita prima di iniziare.")
@@ -114,16 +117,58 @@ def _require_operational(session, allowed_states):
         raise WorkflowError("invalid_state", "Operazione non consentita nello stato attuale.")
 
 
+def is_started(session):
+    """A session is started only by an active tick or by saved feedback."""
+    return bool(
+        session["completion"]
+        or session["immediate_feedback"] is not None
+        or session["next_morning_feedback"] is not None
+    )
+
+
 def is_replaceable(session):
     """A current plan that was never started can be swapped for a new one."""
-    return (
-        session is not None
-        and session["status"] == "planned"
-        and session["started_at"] is None
-        and session["completion"] == []
-        and session["immediate_feedback"] is None
-        and session["next_morning_feedback"] is None
+    return session is not None and session["status"] == "planned" and not is_started(session)
+
+
+def skip_problem(session):
+    """``None`` if the session can be marked not done, else ``(code, Italian message)``.
+
+    Only an unstarted ``planned`` session qualifies; a pre-operational one may
+    be skipped too (it is never operational anyway).
+    """
+    if session is None:
+        return "not_found", "Sessione non trovata."
+    if session["status"] in TERMINAL_STATUSES:
+        return "invalid_state", "La sessione non è modificabile."
+    if session["status"] != "planned" or is_started(session):
+        return "invalid_state", "La sessione è già iniziata e non può essere segnata come non eseguita."
+    return None
+
+
+def _skip_in_tx(conn, session_id, now):
+    """Mark a session not done inside the caller's ``immediate_transaction``.
+
+    A pending ``skip`` proposal aimed at that session is now moot: discard it.
+    """
+    problem = skip_problem(get_session(conn, session_id))
+    if problem is not None:
+        raise WorkflowError(*problem)
+    conn.execute(
+        "UPDATE sessions SET status = ?, skipped_at = ? WHERE id = ?",
+        ("skipped", now, session_id),
     )
+    conn.execute(
+        "UPDATE plan_proposals SET status = ?, decided_at = ? "
+        "WHERE status = ? AND kind = ? AND target_session_id = ?",
+        ("discarded", now, "pending", "skip", session_id),
+    )
+
+
+def skip_session(conn, session_id, now):
+    """The user declares the current session was never done; it becomes terminal."""
+    with immediate_transaction(conn):
+        _skip_in_tx(conn, session_id, now)
 
 
 def _import_check(conn, plan, replace_current, expected_current_id):
@@ -242,14 +287,21 @@ def _discard_pending(conn, now):
     )
 
 
+def _with_target(conn, proposal):
+    """A ``skip`` proposal carries the session it is aimed at."""
+    if proposal["kind"] == "skip":
+        proposal["target"] = get_session(conn, proposal["target_session_id"])
+    return proposal
+
+
 def get_pending_proposal(conn):
     row = conn.execute("SELECT * FROM plan_proposals WHERE status = ?", ("pending",)).fetchone()
-    return row_to_proposal(row) if row is not None else None
+    return _with_target(conn, row_to_proposal(row)) if row is not None else None
 
 
 def get_proposal(conn, proposal_id):
     row = conn.execute("SELECT * FROM plan_proposals WHERE id = ?", (proposal_id,)).fetchone()
-    return row_to_proposal(row) if row is not None else None
+    return _with_target(conn, row_to_proposal(row)) if row is not None else None
 
 
 def _require_pending_proposal(conn, proposal_id):
@@ -274,6 +326,26 @@ def create_proposal(conn, plan, now):
     return proposal
 
 
+def create_skip_proposal(conn, session_id, now):
+    """Store "mark this session not done" as the only pending proposal; never touches sessions."""
+    with immediate_transaction(conn):
+        session = get_session(conn, session_id)
+        problem = skip_problem(session)
+        if problem is not None:
+            raise WorkflowError(*problem)
+        current = get_current_session(conn)
+        if current is None or current["id"] != session_id:
+            raise WorkflowError("invalid_state", "La sessione non è modificabile.")
+        _discard_pending(conn, now)
+        cursor = conn.execute(
+            "INSERT INTO plan_proposals (created_at, kind, plan_json, status, target_session_id) "
+            "VALUES (?, ?, NULL, ?, ?)",
+            (now, "skip", "pending", session_id),
+        )
+        proposal = get_proposal(conn, cursor.lastrowid)
+    return proposal
+
+
 def discard_proposal(conn, proposal_id, now):
     with immediate_transaction(conn):
         _require_pending_proposal(conn, proposal_id)
@@ -284,10 +356,18 @@ def discard_proposal(conn, proposal_id, now):
 
 
 def accept_proposal(conn, proposal_id, now, replace_current=False, expected_current_id=None):
-    """Import the pending proposal and mark it accepted, atomically."""
+    """Apply the pending proposal (import a plan or mark a session not done) and mark it accepted, atomically."""
     with immediate_transaction(conn):
         proposal = _require_pending_proposal(conn, proposal_id)
-        session = _import_session_in_tx(conn, proposal["plan"], now, replace_current, expected_current_id)
+        if proposal["kind"] == "skip":
+            # _skip_in_tx also discards the skip proposals aimed at the target,
+            # this one included; the UPDATE below settles it as accepted.
+            _skip_in_tx(conn, proposal["target_session_id"], now)
+            session = _require_session(conn, proposal["target_session_id"])
+        else:
+            session = _import_session_in_tx(
+                conn, proposal["plan"], now, replace_current, expected_current_id,
+            )
         conn.execute(
             "UPDATE plan_proposals SET status = ?, decided_at = ?, session_id = ? WHERE id = ?",
             ("accepted", now, session["id"], proposal_id),
@@ -310,9 +390,7 @@ def save_completion(conn, session_id, item_ids, now):
         session = _require_session(conn, session_id)
         _require_operational(session, {"planned"})
         completion = _canonical_completion(session["plan"], item_ids)
-        started_at = session["started_at"]
-        if started_at is None and completion:
-            started_at = now
+        started_at = (session["started_at"] or now) if completion else None
         conn.execute(
             "UPDATE sessions SET completion_json = ?, started_at = ? WHERE id = ?",
             (encode_json(completion), started_at, session_id),
@@ -325,20 +403,8 @@ def reset_completion(conn, session_id):
         session = _require_session(conn, session_id)
         _require_operational(session, {"planned"})
         conn.execute(
-            "UPDATE sessions SET completion_json = ? WHERE id = ?",
+            "UPDATE sessions SET completion_json = ?, started_at = NULL WHERE id = ?",
             (encode_json([]), session_id),
-        )
-
-
-def mark_rest_started(conn, session_id, now):
-    with immediate_transaction(conn):
-        session = _require_session(conn, session_id)
-        _require_operational(session, {"planned"})
-        if session["plan"]["activity_type"] != "rest" or plan_item_ids(session["plan"]):
-            raise WorkflowError("invalid_state", "L'avvio esplicito è riservato alle schede di riposo senza esercizi.")
-        conn.execute(
-            "UPDATE sessions SET started_at = COALESCE(started_at, ?) WHERE id = ?",
-            (now, session_id),
         )
 
 

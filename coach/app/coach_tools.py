@@ -4,8 +4,9 @@ Each tool answers with Italian text: a result starts with ``generated_header(now
 a refused input with ``Errore: `` and a fixed message (or the validator's
 ``$.campo: messaggio`` lines). Nothing raises: unreadable data becomes a fixed
 message, never a traceback nor the submitted text. ``now`` is always the
-server's ``utc_now_iso()``, never a time sent by the client. The only write is
-``proponi_scheda``, which stores a pending proposal; sessions are never touched.
+server's ``utc_now_iso()``, never a time sent by the client. The only writes are
+``proponi_scheda`` and ``proponi_non_eseguita``, which store a pending proposal;
+sessions are never touched.
 """
 
 from datetime import date
@@ -20,7 +21,8 @@ from .db import read_transaction
 from .plan_validation import PlanValidationError, parse_plan_input, validate_plan
 from .summary import session_detail_text
 from .workflow import (
-    build_state_text, create_proposal, get_session, import_offer, list_journal_entries, list_sessions,
+    WorkflowError, build_state_text, create_proposal, create_skip_proposal, get_session, import_offer,
+    get_pending_proposal, list_journal_entries, list_sessions,
 )
 
 
@@ -30,10 +32,12 @@ UNAVAILABLE = "Errore: dati non disponibili al momento. Riprova più tardi.\n"
 BAD_DATE = "Errore: le date devono essere nel formato AAAA-MM-GG.\n"
 BAD_RANGE = "Errore: la data iniziale è successiva alla data finale.\n"
 NOT_FOUND = "Errore: Sessione non trovata.\n"
+DISCARDED_PREVIOUS = "La proposta precedente in attesa è stata scartata."
 INVALID_PLAN = "Errore: la scheda non è valida."
 IMPORTABLE = "Scheda valida e importabile."
 NOT_IMPORTABLE = "La scheda non è importabile nello stato attuale."
 CONFIRM_IN_APP = "Conferma l'importazione dall'app, pagina Oggi."
+CONFIRM_SKIP_IN_APP = "Conferma dall'app, pagina Oggi."
 SESSION_LINE_FORMAT = (
     "Formato riga: n.<numero> <gg/mm> · <tipo> · <completati>/<totale> · lomb. <immediato>→<mattino> · "
     "sforzo <0-10> · <stato> · id: <id>; \"-\" indica un dato non registrato."
@@ -120,13 +124,14 @@ def _state_lines(conn, plan):
     if offer["replace_current"]:
         lines.append(prefixed_text(
             f"La scheda corrente n.{current['plan']['sequence_number']} — ",
-            f"{current['plan']['title']} non è mai stata avviata: "
-            "all'importazione l'app proporrà all'utente di sostituirla.",
+            f"{current['plan']['title']} non è iniziata: all'importazione l'app proporrà all'utente "
+            "di modificarla con questa scheda; la versione precedente resterà nello storico come sostituita.",
         ))
     elif offer["replace_offer"]:
         lines.append(prefixed_text(
-            f"La scheda sostituisce la scheda corrente n.{current['plan']['sequence_number']} — ",
-            f"{current['plan']['title']}: l'utente conferma la sostituzione nell'app.",
+            f"La scheda modifica la sessione corrente n.{current['plan']['sequence_number']} — ",
+            f"{current['plan']['title']}: l'utente conferma nell'app; "
+            "la versione precedente resta nello storico come sostituita.",
         ))
     if offer["problems"]:
         lines.append("Problemi per l'importazione:")
@@ -210,11 +215,35 @@ def valida_scheda(conn, scheda, now):
 @_tool
 def proponi_scheda(conn, scheda, now):
     plan = _parse_plan(scheda)
+    replaced = get_pending_proposal(conn) is not None
     proposal = create_proposal(conn, plan, now)
     lines, _problems = _state_lines(conn, proposal["plan"])
     return _text([
         generated_header(now),
         _plan_line("Proposta inviata: ", proposal["plan"]),
         *lines,
+        *([DISCARDED_PREVIOUS] if replaced else []),
         CONFIRM_IN_APP,
+    ])
+
+
+@_tool
+def proponi_non_eseguita(conn, id_sessione, now):
+    if type(id_sessione) is not str:
+        raise _Refused(NOT_FOUND)
+    replaced = get_pending_proposal(conn) is not None
+    try:
+        proposal = create_skip_proposal(conn, id_sessione, now)
+    except WorkflowError as error:
+        # Fixed Italian workflow messages: they never carry the submitted id.
+        raise _Refused("Errore: " + str(error) + "\n") from None
+    target = proposal["target"]
+    return _text([
+        generated_header(now),
+        prefixed_text(
+            f"Proposta inviata: segnare come non eseguita la sessione n.{target['sequence_number']} — ",
+            target["plan"]["title"],
+        ),
+        *([DISCARDED_PREVIOUS] if replaced else []),
+        CONFIRM_SKIP_IN_APP,
     ])

@@ -39,10 +39,12 @@ TOOL_PARAMETERS = {
     "diario": DATES_PARAMETERS,
     "valida_scheda": PLAN_PARAMETER,
     "proponi_scheda": PLAN_PARAMETER,
+    "proponi_non_eseguita": "id_sessione (testo, obbligatorio: l'id della sessione corrente, da stato_attuale)",
 }
 INSTRUCTIONS = (
     "Strumenti dell'app Coach ginnastica, raggiungibile solo in LAN o VPN. Chiama stato_attuale "
-    "all'inizio di ogni conversazione. Le schede si propongono con proponi_scheda: l'utente le "
+    "all'inizio di ogni conversazione. Le schede si propongono con proponi_scheda, la sessione "
+    "corrente mai iniziata si propone come non eseguita con proponi_non_eseguita: l'utente "
     "conferma sempre nell'app; nessuno strumento scrive sessioni, feedback o diario."
 )
 DATE_HINT = "Date facoltative nel formato AAAA-MM-GG (data locale italiana); vuote = nessun limite."
@@ -70,6 +72,12 @@ TOOL_DESCRIPTIONS = {
         "Valida una scheda JSON v1 (testo, anche in un blocco ```json) e la salva come proposta in "
         "attesa, sostituendo un'eventuale proposta precedente. Non importa la scheda: l'utente la "
         "conferma o la scarta dall'app, pagina Oggi."
+    ),
+    "proponi_non_eseguita": (
+        "Propone di segnare come non eseguita la sessione corrente, solo se mai iniziata (nessuna "
+        "spunta attiva, nessun feedback). L'utente conferma o scarta dall'app, pagina Oggi. La "
+        "proposta sostituisce un'eventuale proposta in attesa; sessioni e storico restano invariati. "
+        "Se hai già la scheda che la sostituisce, usa proponi_scheda."
     ),
 }
 TOOL_NAMES = tuple(TOOL_DESCRIPTIONS)
@@ -148,7 +156,13 @@ def create_server(database_path):
     def proponi_scheda(scheda: str) -> str:
         return run(coach_tools.proponi_scheda, scheda)
 
-    for function in (stato_attuale, elenco_sessioni, dettaglio_sessione, diario, valida_scheda, proponi_scheda):
+    def proponi_non_eseguita(id_sessione: str) -> str:
+        return run(coach_tools.proponi_non_eseguita, id_sessione)
+
+    for function in (
+        stato_attuale, elenco_sessioni, dettaglio_sessione, diario, valida_scheda, proponi_scheda,
+        proponi_non_eseguita,
+    ):
         server.add_tool(
             function, name=function.__name__, description=TOOL_DESCRIPTIONS[function.__name__],
             structured_output=False,
