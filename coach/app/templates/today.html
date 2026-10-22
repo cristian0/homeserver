@@ -96,7 +96,7 @@
                         </div>
                       </div>
                     {% endif %}
-                    <p class="item-cue"><span class="eyebrow">Tecnica</span>{{ item.cue }}</p>
+                    <p class="item-cue"><span class="eyebrow">Tecnica</span><span class="cue-text">{{ item.cue }}</span></p>
                     <div class="item-video">
                       {% if item.embed_url %}
                         <button type="button" class="video-toggle ghost sm" data-video-embed="{{ item.embed_url }}" aria-expanded="false">{{ item.video_label or 'Guarda il video' }}</button>

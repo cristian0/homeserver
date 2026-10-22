@@ -11,7 +11,7 @@
         <li>
           <h4>{{ item.name }}</h4>
           <p><strong>Dose:</strong> {{ item.dose }}</p>
-          <p><strong>Tecnica:</strong> {{ item.cue }}</p>
+          <p><strong>Tecnica:</strong> <span class="cue-text">{{ item.cue }}</span></p>
           {% if item.video_url %}<p><a href="{{ item.video_url }}" target="_blank" rel="noopener noreferrer">{{ item.video_label or 'Apri il video' }}</a></p>{% endif %}
           {% if item.alternate_video_url %}<p><a href="{{ item.alternate_video_url }}" target="_blank" rel="noopener noreferrer">Video alternativo</a></p>{% endif %}
           {% if item.video_note %}<p>{{ item.video_note }}</p>{% endif %}

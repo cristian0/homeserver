@@ -142,6 +142,7 @@ details.semaphore[open] summary::after { content: "⌃"; }
 .today[data-view="focus"] .item-detail { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
 .item-cue { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; font-size: 18px; line-height: 1.4; }
 .item-cue .eyebrow { margin-bottom: 4px; }
+.cue-text { white-space: pre-line; overflow-wrap: anywhere; }
 .item-video { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .video-toggle::before { content: "▶"; }
 .video-note { font-size: 13px; color: var(--ink2); }
