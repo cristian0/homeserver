@@ -181,7 +181,7 @@ def _validate_item(errors, item, path, seen_ids):
     _add_missing_keys(errors, item, ITEM_REQUIRED_KEYS, path)
     _add_unknown_keys(errors, item, allowed, path)
 
-    for key, maximum in (("id", 64), ("name", 120), ("dose", 120), ("cue", 400)):
+    for key, maximum in (("id", 64), ("name", 120), ("dose", 120), ("cue", 800)):
         if key in item:
             reason = _string_error(item[key], 1, maximum)
             if reason:
@@ -278,7 +278,7 @@ def validate_plan(plan):
         if not 0 <= len(notes) <= 10:
             errors.append("$.session_notes: deve contenere da 0 a 10 note")
         for index, note in enumerate(notes):
-            reason = _string_error(note, 1, 200)
+            reason = _string_error(note, 1, 400)
             if reason:
                 errors.append(f"$.session_notes[{index}]: {reason}")
 
